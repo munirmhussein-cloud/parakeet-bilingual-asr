@@ -1,12 +1,18 @@
 import subprocess
 import sys
+import shutil
 import importlib.metadata as metadata
 
 print("=== Python ===")
 print(sys.version)
 
 print("\n=== GPU ===")
-subprocess.run(["nvidia-smi"], check=False)
+nvidia_smi = shutil.which("nvidia-smi")
+
+if nvidia_smi:
+    subprocess.run([nvidia_smi], check=False)
+else:
+    print("nvidia-smi not found on PATH")
 
 print("\n=== Package versions ===")
 packages = [
@@ -15,6 +21,10 @@ packages = [
     "torchaudio",
     "numpy",
     "pandas",
+    "packaging",
+    "requests",
+    "fsspec",
+    "huggingface-hub",
     "nvidia-riva-client",
     "soundfile",
 ]
@@ -32,7 +42,12 @@ import nemo.collections.asr as nemo_asr
 import soundfile
 
 print("CUDA available:", torch.cuda.is_available())
-print("GPU:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else None)
+
+if torch.cuda.is_available():
+    print("GPU:", torch.cuda.get_device_name(0))
+else:
+    print("GPU: None")
+
 print("nemo import: ✅")
 print("nemo.collections.asr import: ✅")
 print("soundfile import: ✅")

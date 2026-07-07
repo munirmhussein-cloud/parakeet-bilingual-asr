@@ -1,9 +1,11 @@
 import subprocess
 import sys
 
+
 def run(cmd):
     print(f"\n$ {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
+
 
 print("=== Installing system dependencies ===")
 run(["apt-get", "update", "-qq"])
