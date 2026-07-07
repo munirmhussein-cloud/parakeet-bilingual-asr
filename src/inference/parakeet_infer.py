@@ -1,69 +1,81 @@
 """
-Parakeet / NeMo inference helpers.
+Riva endpoint inference helpers.
 
-Produces Bronze-compatible word-level ASR JSON from a WAV file when NeMo ASR
-models are available in the Colab runtime.
+Produces Bronze-compatible word-level ASR JSON from a WAV file using the
+NVIDIA Riva gRPC endpoint discovered in Sprint 1.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
 
-def _load_nemo_asr_model(model_name: str):
-    try:
-        from nemo.collections.asr.models import ASRModel
-    except Exception as exc:
-        raise RuntimeError(
-            "NeMo ASR is not available. Install NeMo in Colab before running "
-            "live Bronze inference."
-        ) from exc
-
-    return ASRModel.from_pretrained(model_name=model_name)
+DEFAULT_RIVA_SERVER = "grpc.nvcf.nvidia.com:443"
+DEFAULT_RIVA_FUNCTION_ID = "71203149-d3b7-4460-8231-1be2543a1fca"
 
 
-def _normalize_word(word: Any, fallback_index: int) -> dict[str, Any]:
-    if isinstance(word, dict):
-        text = word.get("word") or word.get("text") or word.get("token") or ""
-        start = word.get("start_time", word.get("start", word.get("global_start")))
-        end = word.get("end_time", word.get("end", word.get("global_end")))
-        confidence = word.get("confidence")
-    else:
-        text = getattr(word, "word", None) or getattr(word, "text", None) or str(word)
-        start = getattr(word, "start_time", None) or getattr(word, "start", None)
-        end = getattr(word, "end_time", None) or getattr(word, "end", None)
-        confidence = getattr(word, "confidence", None)
+def _word_seconds(value: Any) -> float | None:
+    if value is None:
+        return None
 
-    if start is None:
-        start = round(fallback_index * 0.5, 2)
-    if end is None:
-        end = round(float(start) + 0.4, 2)
+    if isinstance(value, (int, float)):
+        return float(value)
 
-    return {
-        "text": str(text),
-        "start": float(start),
-        "end": float(end),
-        "confidence": confidence,
-    }
+    seconds = getattr(value, "seconds", None)
+    nanos = getattr(value, "nanos", None)
+
+    if seconds is not None or nanos is not None:
+        return float(seconds or 0) + float(nanos or 0) / 1_000_000_000
+
+    return None
 
 
-def _extract_words_from_hypothesis(hypothesis: Any) -> list[dict[str, Any]]:
-    words = None
+def _extract_words_from_riva_response(response: Any) -> list[dict[str, Any]]:
+    words: list[dict[str, Any]] = []
 
-    if isinstance(hypothesis, dict):
-        words = hypothesis.get("words") or hypothesis.get("word_timestamps")
-        text = hypothesis.get("text", "")
-    else:
-        words = getattr(hypothesis, "words", None) or getattr(
-            hypothesis, "word_timestamps", None
-        )
-        text = getattr(hypothesis, "text", str(hypothesis))
+    for result in getattr(response, "results", []):
+        alternatives = getattr(result, "alternatives", [])
+        if not alternatives:
+            continue
+
+        alternative = alternatives[0]
+
+        for index, word_info in enumerate(getattr(alternative, "words", [])):
+            text = getattr(word_info, "word", "")
+            start = _word_seconds(getattr(word_info, "start_time", None))
+            end = _word_seconds(getattr(word_info, "end_time", None))
+            confidence = getattr(word_info, "confidence", None)
+
+            if start is None:
+                start = round(len(words) * 0.5, 2)
+            if end is None:
+                end = round(float(start) + 0.4, 2)
+
+            words.append(
+                {
+                    "text": text,
+                    "start": float(start),
+                    "end": float(end),
+                    "confidence": confidence,
+                }
+            )
 
     if words:
-        return [_normalize_word(word, index) for index, word in enumerate(words)]
+        return words
 
-    # Fallback when model returns only transcript text.
+    # Fallback if endpoint returns transcript text but no word offsets.
+    transcript_parts: list[str] = []
+    for result in getattr(response, "results", []):
+        alternatives = getattr(result, "alternatives", [])
+        if alternatives:
+            transcript = getattr(alternatives[0], "transcript", "")
+            if transcript:
+                transcript_parts.append(transcript)
+
+    transcript = " ".join(transcript_parts).strip()
+
     return [
         {
             "text": token,
@@ -71,45 +83,89 @@ def _extract_words_from_hypothesis(hypothesis: Any) -> list[dict[str, Any]]:
             "end": round(index * 0.5 + 0.4, 2),
             "confidence": None,
         }
-        for index, token in enumerate(str(text).split())
+        for index, token in enumerate(transcript.split())
     ]
 
 
 def transcribe_file(
     audio_path: str | Path,
     *,
-    model_name: str,
-    language: str | None = None,
+    model_name: str | None = None,
+    language: str,
     audio_id: str | None = None,
+    server: str = DEFAULT_RIVA_SERVER,
+    function_id: str = DEFAULT_RIVA_FUNCTION_ID,
+    api_key: str | None = None,
+    use_ssl: bool = True,
+    automatic_punctuation: bool = True,
+    verbatim_transcripts: bool = True,
+    max_alternatives: int = 1,
 ) -> dict[str, Any]:
     """
-    Transcribe one WAV file and return Bronze-compatible JSON.
+    Transcribe one WAV file through Riva and return Bronze-compatible JSON.
 
-    The returned structure is intentionally simple and compatible with
-    scripts/generate_reconciliation_gradio_input.py.
+    Args:
+        model_name: Optional Riva model name. For the hosted Sprint 1 endpoint,
+            language forcing is controlled primarily through language_code.
+        language: Forced language code, e.g. ar-AR or en-US.
     """
     audio_path = Path(audio_path)
+
     if not audio_path.exists():
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-    model = _load_nemo_asr_model(model_name)
+    api_key = api_key or os.environ.get("NVIDIA_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "Missing NVIDIA API key. Set NVIDIA_API_KEY or pass --api-key-env."
+        )
 
     try:
-        results = model.transcribe(
-            [str(audio_path)],
-            timestamps=True,
-            return_hypotheses=True,
-        )
-    except TypeError:
-        results = model.transcribe([str(audio_path)])
+        import riva.client
+    except Exception as exc:
+        raise RuntimeError(
+            "nvidia-riva-client is not installed. Run: pip install -U nvidia-riva-client"
+        ) from exc
 
-    hypothesis = results[0] if isinstance(results, list) else results
-    words = _extract_words_from_hypothesis(hypothesis)
+    metadata = [
+        ("function-id", function_id),
+        ("authorization", f"Bearer {api_key}"),
+    ]
+
+    auth = riva.client.Auth(
+        uri=server,
+        use_ssl=use_ssl,
+        metadata_args=metadata,
+    )
+
+    asr_service = riva.client.ASRService(auth)
+
+    config_kwargs = {
+        "language_code": language,
+        "max_alternatives": max_alternatives,
+        "enable_word_time_offsets": True,
+        "enable_automatic_punctuation": automatic_punctuation,
+        "verbatim_transcripts": verbatim_transcripts,
+    }
+
+    if model_name:
+        config_kwargs["model"] = model_name
+
+    config = riva.client.RecognitionConfig(**config_kwargs)
+
+    with audio_path.open("rb") as handle:
+        audio_bytes = handle.read()
+
+    response = asr_service.offline_recognize(audio_bytes, config)
+    words = _extract_words_from_riva_response(response)
 
     return {
         "schema_version": "bronze_transcript_v1",
         "audio_id": audio_id or audio_path.stem,
         "audio_path": str(audio_path),
+        "backend": "riva_endpoint",
+        "server": server,
+        "function_id": function_id,
         "model_name": model_name,
         "language": language,
         "words": words,
