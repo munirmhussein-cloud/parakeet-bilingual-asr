@@ -1,6 +1,9 @@
-artifacts/
-audio/
-data/audio/
+artifacts/*
+!artifacts/sprint0/
+!artifacts/sprint0/.gitkeep
+/audio/
+data/audio/*
+!data/audio/.gitkeep
 *.wav
 *.mp3
 *.flac
@@ -10,3 +13,6 @@ data/audio/
 *.ckpt
 .env
 *.key
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
