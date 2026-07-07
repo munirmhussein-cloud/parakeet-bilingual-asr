@@ -1,0 +1,899 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/munirmhussein-cloud/parakeet-bilingual-asr/schemas/bronze_transcript_v1.schema.json",
+  "title": "Bronze Transcript v1",
+  "description": "Bronze ASR transcript schema preserving raw Parakeet/Riva output, normalized timestamps, language hypotheses, and reconciliation metadata.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "metadata",
+    "audio",
+    "asr_request",
+    "chunks",
+    "raw_responses",
+    "segments",
+    "words",
+    "language_spans",
+    "alignment_flags",
+    "annotation",
+    "future_optimization",
+    "exports"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "bronze_transcript_v1"
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "project",
+        "sprint",
+        "run_id",
+        "lecture_id",
+        "lecture_title",
+        "created_at_utc",
+        "provider",
+        "endpoint_server",
+        "function_id",
+        "client_package",
+        "client_version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "project": {
+          "type": "string"
+        },
+        "sprint": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "lecture_id": {
+          "type": "string"
+        },
+        "lecture_title": {
+          "type": "string"
+        },
+        "created_at_utc": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "endpoint_server": {
+          "type": "string"
+        },
+        "function_id": {
+          "type": "string"
+        },
+        "client_package": {
+          "type": "string"
+        },
+        "client_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "required": [
+        "source_audio_path",
+        "normalized_audio_path",
+        "source_audio_sha256",
+        "normalized_audio_sha256",
+        "duration_sec",
+        "sample_rate_hz",
+        "channels",
+        "format"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source_audio_path": {
+          "type": "string"
+        },
+        "normalized_audio_path": {
+          "type": "string"
+        },
+        "source_audio_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "normalized_audio_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duration_sec": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "sample_rate_hz": {
+          "type": "integer"
+        },
+        "channels": {
+          "type": "integer"
+        },
+        "format": {
+          "type": "string"
+        }
+      }
+    },
+    "asr_request": {
+      "type": "object",
+      "required": [
+        "encoding",
+        "sample_rate_hertz",
+        "language_code",
+        "max_alternatives",
+        "enable_word_time_offsets",
+        "enable_automatic_punctuation",
+        "verbatim_transcripts",
+        "profanity_filter",
+        "speech_contexts",
+        "audio_channel_count",
+        "model",
+        "custom_configuration",
+        "endpointing_config"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "encoding": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        },
+        "sample_rate_hertz": {
+          "type": "integer"
+        },
+        "language_code": {
+          "type": "string"
+        },
+        "max_alternatives": {
+          "type": "integer"
+        },
+        "enable_word_time_offsets": {
+          "type": "boolean"
+        },
+        "enable_automatic_punctuation": {
+          "type": "boolean"
+        },
+        "verbatim_transcripts": {
+          "type": "boolean"
+        },
+        "profanity_filter": {
+          "type": "boolean"
+        },
+        "speech_contexts": {
+          "type": "array"
+        },
+        "audio_channel_count": {
+          "type": "integer"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "custom_configuration": {
+          "type": "object"
+        },
+        "endpointing_config": {
+          "type": "object"
+        }
+      }
+    },
+    "chunks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/chunk"
+      }
+    },
+    "raw_responses": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/raw_response"
+      }
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/segment"
+      }
+    },
+    "words": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/word"
+      }
+    },
+    "alternatives": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/alternative"
+      }
+    },
+    "language_spans": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/language_span"
+      }
+    },
+    "alignment_flags": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/alignment_flag"
+      }
+    },
+    "overlap_regions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/overlap_region"
+      }
+    },
+    "annotation": {
+      "type": "object",
+      "required": [
+        "review_status",
+        "annotation_status",
+        "annotator_notes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "review_status": {
+          "type": "string",
+          "enum": [
+            "unreviewed",
+            "in_review",
+            "reviewed",
+            "blocked"
+          ]
+        },
+        "annotation_status": {
+          "type": "string",
+          "enum": [
+            "unreviewed",
+            "accepted",
+            "corrected",
+            "flagged"
+          ]
+        },
+        "annotator_notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "future_optimization": {
+      "type": "object",
+      "required": [
+        "error_analysis_ready",
+        "custom_vocabulary_candidates_path",
+        "speech_context_candidates_path",
+        "word_boost_candidates_path",
+        "custom_pronunciation_candidates_path",
+        "itn_overlay_path"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "error_analysis_ready": {
+          "type": "boolean"
+        },
+        "custom_vocabulary_candidates_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "speech_context_candidates_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "word_boost_candidates_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "custom_pronunciation_candidates_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "itn_overlay_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "exports": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bronze_json_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bronze_txt_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bronze_words_tsv_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bronze_segments_tsv_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "chunk": {
+      "type": "object",
+      "required": [
+        "chunk_id",
+        "chunk_index",
+        "chunk_audio_path",
+        "chunk_audio_sha256",
+        "start_sec_global",
+        "end_sec_global",
+        "overlap_before_sec",
+        "overlap_after_sec",
+        "status",
+        "raw_response_path"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "type": "string"
+        },
+        "chunk_index": {
+          "type": "integer"
+        },
+        "chunk_audio_path": {
+          "type": "string"
+        },
+        "chunk_audio_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "start_sec_global": {
+          "type": "number"
+        },
+        "end_sec_global": {
+          "type": "number"
+        },
+        "overlap_before_sec": {
+          "type": "number"
+        },
+        "overlap_after_sec": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "completed",
+            "failed",
+            "skipped"
+          ]
+        },
+        "raw_response_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "raw_response": {
+      "type": "object",
+      "required": [
+        "chunk_id",
+        "raw_response_path",
+        "raw_response_sha256",
+        "response_format",
+        "result_count"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "type": "string"
+        },
+        "raw_response_path": {
+          "type": "string"
+        },
+        "raw_response_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_format": {
+          "type": "string"
+        },
+        "result_count": {
+          "type": "integer"
+        }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "required": [
+        "segment_id",
+        "chunk_id",
+        "result_index",
+        "channel_tag",
+        "text",
+        "confidence",
+        "start_ms_local",
+        "end_ms_local",
+        "start_sec_local",
+        "end_sec_local",
+        "start_sec_global",
+        "end_sec_global",
+        "audio_processed",
+        "word_start_id",
+        "word_end_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "segment_id": {
+          "type": "string"
+        },
+        "chunk_id": {
+          "type": "string"
+        },
+        "result_index": {
+          "type": "integer"
+        },
+        "channel_tag": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "start_ms_local": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "end_ms_local": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "start_sec_local": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "end_sec_local": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "start_sec_global": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "end_sec_global": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "audio_processed": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "word_start_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "word_end_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "word": {
+      "type": "object",
+      "required": [
+        "word_id",
+        "chunk_id",
+        "segment_id",
+        "result_index",
+        "word_index",
+        "text",
+        "start_ms_raw",
+        "end_ms_raw",
+        "start_sec_local",
+        "end_sec_local",
+        "start_sec_global",
+        "end_sec_global",
+        "language_hypothesis",
+        "language_hypothesis_source",
+        "is_punctuation",
+        "confidence",
+        "annotation_status",
+        "annotator_notes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "word_id": {
+          "type": "string"
+        },
+        "chunk_id": {
+          "type": "string"
+        },
+        "segment_id": {
+          "type": "string"
+        },
+        "result_index": {
+          "type": "integer"
+        },
+        "word_index": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        },
+        "start_ms_raw": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "end_ms_raw": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "start_sec_local": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "end_sec_local": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "start_sec_global": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "end_sec_global": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "language_hypothesis": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "language_hypothesis_source": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "model",
+            "annotator",
+            "derived",
+            null
+          ]
+        },
+        "is_punctuation": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "annotation_status": {
+          "type": "string",
+          "enum": [
+            "unreviewed",
+            "accepted",
+            "corrected",
+            "flagged"
+          ]
+        },
+        "annotator_notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "alternative": {
+      "type": "object",
+      "required": [
+        "alternative_id",
+        "chunk_id",
+        "segment_id",
+        "result_index",
+        "alternative_index",
+        "transcript",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "alternative_id": {
+          "type": "string"
+        },
+        "chunk_id": {
+          "type": "string"
+        },
+        "segment_id": {
+          "type": "string"
+        },
+        "result_index": {
+          "type": "integer"
+        },
+        "alternative_index": {
+          "type": "integer"
+        },
+        "transcript": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "language_span": {
+      "type": "object",
+      "required": [
+        "language_span_id",
+        "chunk_id",
+        "start_word_id",
+        "end_word_id",
+        "language_hypothesis",
+        "language_source",
+        "start_sec_global",
+        "end_sec_global",
+        "text",
+        "word_count",
+        "needs_review"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "language_span_id": {
+          "type": "string"
+        },
+        "chunk_id": {
+          "type": "string"
+        },
+        "start_word_id": {
+          "type": "string"
+        },
+        "end_word_id": {
+          "type": "string"
+        },
+        "language_hypothesis": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "language_source": {
+          "type": "string",
+          "enum": [
+            "model",
+            "annotator",
+            "derived"
+          ]
+        },
+        "start_sec_global": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "end_sec_global": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "word_count": {
+          "type": "integer"
+        },
+        "needs_review": {
+          "type": "boolean"
+        }
+      }
+    },
+    "alignment_flag": {
+      "type": "object",
+      "required": [
+        "flag_id",
+        "flag_type",
+        "severity",
+        "chunk_id",
+        "segment_id",
+        "word_id",
+        "start_sec_global",
+        "end_sec_global",
+        "description",
+        "resolved"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "flag_id": {
+          "type": "string"
+        },
+        "flag_type": {
+          "type": "string",
+          "enum": [
+            "timestamp_zero_duration",
+            "punctuation_token",
+            "possible_language_mismatch",
+            "word_boundary_uncertain",
+            "segment_boundary_uncertain",
+            "overlap_duplicate_candidate"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "chunk_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "segment_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "word_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "start_sec_global": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "end_sec_global": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "resolved": {
+          "type": "boolean"
+        }
+      }
+    },
+    "overlap_region": {
+      "type": "object",
+      "required": [
+        "overlap_id",
+        "previous_chunk_id",
+        "next_chunk_id",
+        "start_sec_global",
+        "end_sec_global",
+        "resolution_status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "overlap_id": {
+          "type": "string"
+        },
+        "previous_chunk_id": {
+          "type": "string"
+        },
+        "next_chunk_id": {
+          "type": "string"
+        },
+        "start_sec_global": {
+          "type": "number"
+        },
+        "end_sec_global": {
+          "type": "number"
+        },
+        "resolution_status": {
+          "type": "string",
+          "enum": [
+            "unresolved",
+            "resolved",
+            "ignored"
+          ]
+        }
+      }
+    }
+  }
+}
