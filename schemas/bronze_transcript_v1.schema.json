@@ -14,6 +14,7 @@
     "segments",
     "words",
     "language_spans",
+    "training_spans",
     "alignment_flags",
     "annotation",
     "future_optimization",
@@ -354,6 +355,13 @@
           ]
         }
       }
+    },
+    "training_spans": {
+      "type": "array",
+      "description": "Bronze auto-generated span candidates for later Gold NeMo manifest export. Do not train directly from Bronze.",
+      "items": {
+        "$ref": "#/$defs/training_span"
+      }
     }
   },
   "$defs": {
@@ -575,7 +583,12 @@
         "is_punctuation",
         "confidence",
         "annotation_status",
-        "annotator_notes"
+        "annotator_notes",
+        "original_bronze_text",
+        "selected_language",
+        "corrected_text",
+        "highlight",
+        "highlight_reasons"
       ],
       "additionalProperties": false,
       "properties": {
@@ -674,6 +687,35 @@
             "string",
             "null"
           ]
+        },
+        "original_bronze_text": {
+          "type": "string"
+        },
+        "selected_language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "corrected_text": {
+          "type": "string"
+        },
+        "highlight": {
+          "type": "boolean"
+        },
+        "highlight_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "bronze_disagreement",
+              "mixed_script",
+              "unsupported_script",
+              "zero_duration",
+              "empty_token",
+              "timestamp_anomaly"
+            ]
+          }
         }
       }
     },
@@ -891,6 +933,78 @@
             "unresolved",
             "resolved",
             "ignored"
+          ]
+        }
+      }
+    },
+    "training_span": {
+      "type": "object",
+      "required": [
+        "training_span_id",
+        "chunk_id",
+        "audio_filepath",
+        "offset_sec",
+        "duration_sec",
+        "start_sec_global",
+        "end_sec_global",
+        "text",
+        "language",
+        "word_start_id",
+        "word_end_id",
+        "source",
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "training_span_id": {
+          "type": "string"
+        },
+        "chunk_id": {
+          "type": "string"
+        },
+        "audio_filepath": {
+          "type": "string"
+        },
+        "offset_sec": {
+          "type": "number"
+        },
+        "duration_sec": {
+          "type": "number"
+        },
+        "start_sec_global": {
+          "type": "number"
+        },
+        "end_sec_global": {
+          "type": "number"
+        },
+        "text": {
+          "type": "string"
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "word_start_id": {
+          "type": "string"
+        },
+        "word_end_id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "bronze_auto_span",
+            "gradio_gold"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "bronze_unreviewed",
+            "gold_reviewed",
+            "excluded"
           ]
         }
       }
