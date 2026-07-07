@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/gold_annotations_v1.schema.json",
+  "title": "Gold Annotations v1",
+  "type": "object",
+  "required": ["schema_version", "record_count", "annotations"],
+  "properties": {
+    "schema_version": {
+      "const": "gold_annotations_v1"
+    },
+    "record_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "annotations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["segment_id", "audio_path", "asr_text", "corrected_text", "reviewer", "decision", "created_at"],
+        "properties": {
+          "segment_id": {"type": "string", "minLength": 1},
+          "audio_path": {"type": "string", "minLength": 1},
+          "asr_text": {"type": "string"},
+          "corrected_text": {"type": "string"},
+          "reviewer": {"type": "string"},
+          "decision": {"type": "string", "enum": ["accepted", "corrected", "rejected"]},
+          "language": {"type": ["string", "null"]},
+          "start_seconds": {"type": ["number", "null"], "minimum": 0},
+          "end_seconds": {"type": ["number", "null"], "minimum": 0},
+          "notes": {"type": "string"},
+          "created_at": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

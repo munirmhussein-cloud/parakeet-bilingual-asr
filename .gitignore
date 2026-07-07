@@ -42,3 +42,9 @@ data/audio/*
 *.key
 *.pem
 .ngc/
+
+# Annotation review outputs
+annotations/progress/*
+!annotations/progress/.gitkeep
+annotations/gold/*
+!annotations/gold/.gitkeep
