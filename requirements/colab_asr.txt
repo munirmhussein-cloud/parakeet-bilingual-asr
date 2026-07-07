@@ -1,0 +1,11 @@
+nemo-toolkit[asr]
+nvidia-riva-client
+soundfile
+numpy==2.0.2
+pandas==2.2.3
+packaging==24.2
+requests==2.32.4
+fsspec==2024.12.0
+numexpr==2.13.1
+huggingface-hub==0.36.2
+setuptools<82
