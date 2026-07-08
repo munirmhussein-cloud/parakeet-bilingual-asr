@@ -168,11 +168,22 @@ def build_app(
         saved = 0
         errors = []
 
+        previous_language = "ar-AR"
+
         for _, row in df.iterrows():
             try:
                 index = int(row["index"])
-                corrected = str(row.get("Corrected Text", "") or "")
-                language = str(row.get("Language", "") or "ar-AR").strip()
+                corrected = str(row.get("Corrected Text", "") or "").strip()
+                language = str(row.get("Language", "") or "").strip()
+
+                if corrected:
+                    if language not in LANGUAGE_CHOICES:
+                        language = detect_language_from_script(corrected)
+                    previous_language = language
+                else:
+                    # Blank corrected text means this row is merged into the
+                    # previous non-blank row and should inherit its language.
+                    language = previous_language
 
                 if language not in LANGUAGE_CHOICES:
                     errors.append(f"Row {index}: invalid language `{language}`")
@@ -180,8 +191,9 @@ def build_app(
 
                 original = items[index]
                 changed = (
-                    corrected != str(original.get("corrected_text", "") or "")
+                    corrected != str(original.get("corrected_text", "") or "").strip()
                     or language != str(original.get("selected_language", "") or "")
+                    or original.get("review_status") != "reviewed"
                 )
 
                 if changed:
@@ -212,15 +224,24 @@ def build_app(
 
         df = df.copy()
         updated = 0
+        previous_language = "ar-AR"
 
         for i, row in df.iterrows():
-            corrected = str(row.get("Corrected Text", "") or "")
-            detected = detect_language_from_script(corrected)
+            corrected = str(row.get("Corrected Text", "") or "").strip()
+
+            if corrected:
+                detected = detect_language_from_script(corrected)
+                previous_language = detected
+            else:
+                # Blank corrected text means this row is merged into the previous
+                # non-blank row, so it inherits the previous language.
+                detected = previous_language
+
             if str(row.get("Language", "") or "") != detected:
                 df.at[i, "Language"] = detected
                 updated += 1
 
-        return df, f"Auto-detected languages for {len(df)} rows. Updated language cells: {updated}."
+        return df, f"Auto-detected languages for {len(df)} rows. Blank rows inherit the previous language. Updated language cells: {updated}."
 
     def load_initial():
         return render_item(items, start_index)
