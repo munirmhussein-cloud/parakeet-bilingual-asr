@@ -1,21 +1,47 @@
 """
-Minimal Sprint 2 Gradio annotator.
+Sprint 3 Gradio annotator.
 
-Loads gradio_reconciliation_input_v1.json, overlays saved progress,
-supports language toggle + corrected_text edits, and exports Gold JSON/JSONL.
+Primary Annotation Mode:
+- table-style bulk review
+- Bronze EN
+- Bronze AR
+- corrected text
+- language label
+- bulk save
+
+Secondary Review Mode:
+- original Sprint 2 one-row-at-a-time workflow
 """
 
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 from typing import Any
 
 import gradio as gr
+import pandas as pd
 
 from src.annotation.gold_export import export_gold_annotations
 from src.annotation.gradio_data_model import normalize_reconciliation_input
 from src.annotation.review_store import ReviewStore
+
+
+LANGUAGE_CHOICES = ["ar-AR", "en-US"]
+
+
+def detect_language_from_script(text: str) -> str:
+    text = str(text or "")
+    arabic_chars = len(re.findall(r"[\u0600-\u06FF]", text))
+    latin_chars = len(re.findall(r"[A-Za-z]", text))
+
+    if arabic_chars > latin_chars:
+        return "ar-AR"
+    if latin_chars > arabic_chars:
+        return "en-US"
+    return "ar-AR"
+
 
 
 def format_context(item: dict[str, Any]) -> str:
@@ -37,6 +63,24 @@ def format_timestamp(item: dict[str, Any]) -> str:
         f"global: {item.get('global_start')} → {item.get('global_end')} | "
         f"local: {item.get('local_start')} → {item.get('local_end')}"
     )
+
+
+def items_to_dataframe(items: list[dict[str, Any]]) -> pd.DataFrame:
+    rows = []
+    for i, item in enumerate(items):
+        rows.append(
+            {
+                "index": i,
+                "row_id": item.get("row_id", ""),
+                "Bronze EN": item.get("bronze_en_text", ""),
+                "Bronze AR": item.get("bronze_ar_text", ""),
+                "Corrected Text": item.get("corrected_text", ""),
+                "Language": item.get("selected_language", "ar-AR"),
+                "Status": item.get("review_status", "unreviewed"),
+                "Flags": ", ".join(str(x) for x in item.get("reconciliation_flags", [])),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def render_item(items: list[dict[str, Any]], index: int):
@@ -93,6 +137,91 @@ def build_app(
     items = store.overlay_progress(normalized["items"])
     start_index = store.get_resume_index(items)
 
+    def export_gold():
+        document = export_gold_annotations(
+            items,
+            output_json_path=gold_json_path,
+            output_jsonl_path=gold_jsonl_path,
+            source_file=str(input_path),
+        )
+        summary = document["review_summary"]
+        return (
+            f"Exported Gold files:\n"
+            f"{gold_json_path}\n"
+            f"{gold_jsonl_path}\n\n"
+            f"Reviewed rows: {summary['reviewed_rows']} / {summary['total_rows']}\n"
+            f"Flagged rows: {summary['flagged_rows']}\n"
+            f"Language changes: {summary['language_changed_rows']}\n"
+            f"Text changes: {summary['text_changed_rows']}"
+        )
+
+    def load_table():
+        return items_to_dataframe(items), f"Loaded {len(items)} rows."
+
+    def save_table(df):
+        if df is None:
+            return items_to_dataframe(items), "No table data received."
+
+        if not isinstance(df, pd.DataFrame):
+            df = pd.DataFrame(df)
+
+        saved = 0
+        errors = []
+
+        for _, row in df.iterrows():
+            try:
+                index = int(row["index"])
+                corrected = str(row.get("Corrected Text", "") or "")
+                language = str(row.get("Language", "") or "ar-AR").strip()
+
+                if language not in LANGUAGE_CHOICES:
+                    errors.append(f"Row {index}: invalid language `{language}`")
+                    continue
+
+                original = items[index]
+                changed = (
+                    corrected != str(original.get("corrected_text", "") or "")
+                    or language != str(original.get("selected_language", "") or "")
+                )
+
+                if changed:
+                    store.save_review(
+                        items,
+                        index,
+                        selected_language=language,
+                        corrected_text=corrected,
+                    )
+                    items[index]["review_status"] = "reviewed"
+                    saved += 1
+
+            except Exception as exc:
+                errors.append(str(exc))
+
+        msg = f"Bulk save complete. Updated rows: {saved}."
+        if errors:
+            msg += "\nErrors:\n" + "\n".join(errors[:10])
+
+        return items_to_dataframe(items), msg
+
+    def auto_detect_languages(df):
+        if df is None:
+            return items_to_dataframe(items), "No table data received."
+
+        if not isinstance(df, pd.DataFrame):
+            df = pd.DataFrame(df)
+
+        df = df.copy()
+        updated = 0
+
+        for i, row in df.iterrows():
+            corrected = str(row.get("Corrected Text", "") or "")
+            detected = detect_language_from_script(corrected)
+            if str(row.get("Language", "") or "") != detected:
+                df.at[i, "Language"] = detected
+                updated += 1
+
+        return df, f"Auto-detected languages for {len(df)} rows. Updated language cells: {updated}."
+
     def load_initial():
         return render_item(items, start_index)
 
@@ -121,118 +250,143 @@ def build_app(
         next_index = store.get_next_index(items, index)
         return render_item(items, next_index)
 
-    def export_gold():
-        document = export_gold_annotations(
-            items,
-            output_json_path=gold_json_path,
-            output_jsonl_path=gold_jsonl_path,
-            source_file=str(input_path),
-        )
-        summary = document["review_summary"]
-        return (
-            f"Exported Gold files:\n"
-            f"{gold_json_path}\n"
-            f"{gold_jsonl_path}\n\n"
-            f"Reviewed rows: {summary['reviewed_rows']} / {summary['total_rows']}\n"
-            f"Flagged rows: {summary['flagged_rows']}\n"
-            f"Language changes: {summary['language_changed_rows']}\n"
-            f"Text changes: {summary['text_changed_rows']}"
-        )
-
-    with gr.Blocks(title="Sprint 2 Minimal Gradio Annotator") as demo:
-        gr.Markdown("# Sprint 2 Minimal Gradio Annotator")
+    with gr.Blocks(title="Bilingual Annotation Platform") as demo:
+        gr.Markdown("# Bilingual Annotation Platform")
         gr.Markdown(
-            "Review one word-level reconciliation row at a time. "
-            "Only `selected_language` and `corrected_text` are editable."
+            "Sprint 3 interface: bulk Annotation Mode first, detailed Review Mode second."
         )
 
-        index_state = gr.State(start_index)
+        with gr.Tab("Annotation Mode"):
+            gr.Markdown(
+                "Edit rows in bulk. Preserve Bronze EN/AR, update Corrected Text and Language, then save all changes."
+            )
 
-        progress = gr.Textbox(label="Progress", interactive=False)
-        flag_status = gr.Textbox(label="Flag Status", interactive=False)
-        row_id = gr.Textbox(label="Row ID", interactive=False)
-        timestamp = gr.Textbox(label="Timestamps", interactive=False)
-        context = gr.Textbox(label="Context", interactive=False)
+            annotation_table = gr.Dataframe(
+                headers=[
+                    "index",
+                    "row_id",
+                    "Bronze EN",
+                    "Bronze AR",
+                    "Corrected Text",
+                    "Language",
+                    "Status",
+                    "Flags",
+                ],
+                datatype=["number", "str", "str", "str", "str", "str", "str", "str"],
+                interactive=True,
+                wrap=True,
+                label="Segment Annotation Table",
+            )
 
-        with gr.Row():
-            bronze_ar = gr.Textbox(label="Bronze AR", interactive=False)
-            bronze_en = gr.Textbox(label="Bronze EN", interactive=False)
+            with gr.Row():
+                reload_table_btn = gr.Button("Reload Table")
+                auto_detect_btn = gr.Button("Auto-detect Languages")
+                save_table_btn = gr.Button("Bulk Save", variant="primary")
+                export_table_btn = gr.Button("Export Gold")
 
-        selected_language = gr.Radio(
-            choices=["ar-AR", "en-US"],
-            label="Selected Language",
-        )
-        corrected_text = gr.Textbox(label="Corrected Text")
-        reviewer = gr.Textbox(label="Reviewer", interactive=False)
+            table_status = gr.Textbox(label="Annotation Mode Status", interactive=False)
 
-        with gr.Row():
-            previous_btn = gr.Button("Previous")
-            skip_btn = gr.Button("Skip")
-            save_btn = gr.Button("Save")
-            save_next_btn = gr.Button("Save & Next", variant="primary")
-            export_btn = gr.Button("Export Gold")
+            demo.load(fn=load_table, outputs=[annotation_table, table_status])
+            reload_table_btn.click(fn=load_table, outputs=[annotation_table, table_status])
+            auto_detect_btn.click(
+                fn=auto_detect_languages,
+                inputs=annotation_table,
+                outputs=[annotation_table, table_status],
+            )
+            save_table_btn.click(
+                fn=save_table,
+                inputs=annotation_table,
+                outputs=[annotation_table, table_status],
+            )
+            export_table_btn.click(fn=export_gold, outputs=table_status)
 
-        export_status = gr.Textbox(label="Export Status", interactive=False)
+        with gr.Tab("Review Mode"):
+            gr.Markdown(
+                "Detailed one-row review mode retained from Sprint 2 for edge cases."
+            )
 
-        item_outputs = [
-            index_state,
-            progress,
-            flag_status,
-            row_id,
-            timestamp,
-            context,
-            bronze_ar,
-            bronze_en,
-            selected_language,
-            corrected_text,
-            reviewer,
-        ]
+            index_state = gr.State(start_index)
 
-        demo.load(fn=load_initial, outputs=item_outputs)
+            progress = gr.Textbox(label="Progress", interactive=False)
+            flag_status = gr.Textbox(label="Flag Status", interactive=False)
+            row_id = gr.Textbox(label="Row ID", interactive=False)
+            timestamp = gr.Textbox(label="Timestamps", interactive=False)
+            context = gr.Textbox(label="Context", interactive=False)
 
-        previous_btn.click(fn=previous, inputs=index_state, outputs=item_outputs)
-        skip_btn.click(fn=skip, inputs=index_state, outputs=item_outputs)
-        save_btn.click(
-            fn=save,
-            inputs=[index_state, selected_language, corrected_text],
-            outputs=item_outputs,
-        )
-        save_next_btn.click(
-            fn=save_and_next,
-            inputs=[index_state, selected_language, corrected_text],
-            outputs=item_outputs,
-        )
-        export_btn.click(fn=export_gold, outputs=export_status)
+            with gr.Row():
+                bronze_ar = gr.Textbox(label="Bronze AR", interactive=False)
+                bronze_en = gr.Textbox(label="Bronze EN", interactive=False)
+
+            selected_language = gr.Radio(
+                choices=LANGUAGE_CHOICES,
+                label="Selected Language",
+            )
+            corrected_text = gr.Textbox(label="Corrected Text")
+            reviewer = gr.Textbox(label="Reviewer", interactive=False)
+
+            with gr.Row():
+                previous_btn = gr.Button("Previous")
+                skip_btn = gr.Button("Skip")
+                save_btn = gr.Button("Save")
+                save_next_btn = gr.Button("Save & Next", variant="primary")
+                export_btn = gr.Button("Export Gold")
+
+            export_status = gr.Textbox(label="Export Status", interactive=False)
+
+            item_outputs = [
+                index_state,
+                progress,
+                flag_status,
+                row_id,
+                timestamp,
+                context,
+                bronze_ar,
+                bronze_en,
+                selected_language,
+                corrected_text,
+                reviewer,
+            ]
+
+            demo.load(fn=load_initial, outputs=item_outputs)
+
+            previous_btn.click(fn=previous, inputs=index_state, outputs=item_outputs)
+            skip_btn.click(fn=skip, inputs=index_state, outputs=item_outputs)
+            save_btn.click(
+                fn=save,
+                inputs=[index_state, selected_language, corrected_text],
+                outputs=item_outputs,
+            )
+            save_next_btn.click(
+                fn=save_and_next,
+                inputs=[index_state, selected_language, corrected_text],
+                outputs=item_outputs,
+            )
+            export_btn.click(fn=export_gold, outputs=export_status)
 
     return demo
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Run Sprint 2 Gradio annotator.")
+    parser = argparse.ArgumentParser(description="Run Sprint 3 Gradio annotator.")
     parser.add_argument(
         "--input",
         default="data/annotations/gradio_reconciliation_input_v1.json",
-        help="Path to gradio_reconciliation_input_v1.json",
     )
     parser.add_argument(
         "--progress",
         default="annotations/progress/gradio_review_progress_v1.json",
-        help="Path to progress snapshot JSON",
     )
     parser.add_argument(
         "--events",
         default="annotations/progress/gradio_review_events_v1.jsonl",
-        help="Path to review event JSONL",
     )
     parser.add_argument(
         "--gold-json",
         default="annotations/gold/gold_annotations_v1.json",
-        help="Gold JSON output path",
     )
     parser.add_argument(
         "--gold-jsonl",
         default="annotations/gold/gold_annotations_v1.jsonl",
-        help="Gold JSONL output path",
     )
     parser.add_argument("--reviewer-id", default=None)
     parser.add_argument("--share", action="store_true")
