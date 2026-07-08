@@ -1,0 +1,43 @@
+{
+  "schema_version": "gold_annotation_v1",
+  "segment_id": "sample_000001",
+  "audio_filepath": "data/audio/sample.wav",
+  "offset": 12.5,
+  "duration": 4.2,
+  "gold_text": "hello مرحبا",
+  "normalized_text": "hello مرحبا",
+  "primary_language": "mixed",
+  "contains_code_switching": true,
+  "review_status": "reviewed",
+  "reviewer_id": "annotator_001",
+  "created_at": "2026-07-07T00:00:00Z",
+  "updated_at": "2026-07-07T00:00:00Z",
+  "tokens": [
+    {
+      "index": 0,
+      "bronze_en": "hello",
+      "bronze_ar": "",
+      "corrected_text": "hello",
+      "selected_language": "eng",
+      "start_time": 12.5,
+      "end_time": 13.1,
+      "confidence": 0.91,
+      "edit_status": "unchanged",
+      "normalization_notes": "",
+      "audit_history": []
+    },
+    {
+      "index": 1,
+      "bronze_en": "",
+      "bronze_ar": "مرحبا",
+      "corrected_text": "مرحبا",
+      "selected_language": "ar",
+      "start_time": 13.1,
+      "end_time": 14.0,
+      "confidence": 0.88,
+      "edit_status": "unchanged",
+      "normalization_notes": "",
+      "audit_history": []
+    }
+  ]
+}
