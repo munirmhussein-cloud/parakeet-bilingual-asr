@@ -60,3 +60,7 @@ data/manifests/audio_catalog_v1.jsonl
 data/manifests/segments/
 data/exports/
 parakeet-bilingual-asr/
+
+# Generated Gold validation artifacts
+data/annotations/gold_annotations_*.json
+data/annotations/gold_annotations_*.jsonl
