@@ -48,3 +48,15 @@ annotations/progress/*
 !annotations/progress/.gitkeep
 annotations/gold/*
 !annotations/gold/.gitkeep
+
+# Sprint 4 generated artifacts
+data/segments/
+data/transcripts/bronze_*_segments/
+data/annotations/reconciliation_*_segments/
+data/annotations/reconciliation_*.json
+data/annotations/gradio_progress_*.json
+data/annotations/gradio_events_*.jsonl
+data/manifests/audio_catalog_v1.jsonl
+data/manifests/segments/
+data/exports/
+parakeet-bilingual-asr/
