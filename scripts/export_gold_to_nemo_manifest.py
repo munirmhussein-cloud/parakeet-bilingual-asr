@@ -33,6 +33,21 @@ def get_items(document):
     return [document]
 
 
+def load_source_reconciliation(document):
+    source_file = document.get("source_file") if isinstance(document, dict) else None
+    if not source_file:
+        return {}
+
+    source_path = Path(source_file)
+    if not source_path.exists():
+        return {}
+
+    try:
+        return json.loads(source_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
 def clean_join(tokens):
     text = " ".join(t.strip() for t in tokens if str(t or "").strip())
     for punct in [".", ",", "?", "!", ":", ";"]:
@@ -49,12 +64,14 @@ def maybe_ms_to_seconds(value):
     return round(value, 3)
 
 
-def resolve_audio_filepath(first, document, fallback):
+def resolve_audio_filepath(first, document, source_document, fallback):
     return (
         first.get("audio_filepath")
         or first.get("audio_path")
         or document.get("source_audio")
         or document.get("source_audio_filepath")
+        or source_document.get("source_audio")
+        or source_document.get("source_audio_filepath")
         or fallback
     )
 
@@ -117,6 +134,7 @@ def main():
     args = parser.parse_args()
 
     document = load_gold_document(args.input)
+    source_document = load_source_reconciliation(document)
     items = get_items(document)
 
     grouped = defaultdict(list)
@@ -140,7 +158,7 @@ def main():
         text = clean_join([x.get("corrected_text", "") for x in group])
         first = group[0]
 
-        audio_filepath = resolve_audio_filepath(first, document, args.audio_filepath)
+        audio_filepath = resolve_audio_filepath(first, document, source_document, args.audio_filepath)
         if not audio_filepath:
             errors.append(f"{audio_id}: missing audio_filepath")
             continue
