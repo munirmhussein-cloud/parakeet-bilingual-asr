@@ -1,0 +1,10 @@
+input: data/raw_audio/Seerah – 01 Specialities of Prophet Muhammed Part 1.mp3
+source_audio_id: seerah_001
+catalog_out: data/manifests/audio_catalog_v1.jsonl
+output_dir: data/segments/sprint4/seerah_001
+metadata_out: data/manifests/segments/seerah_001_audio_segments_v1.jsonl
+manifest_out: data/manifests/segments/seerah_001_segment_manifest.jsonl
+validation_report_out: data/manifests/segments/seerah_001_validation_report.json
+segment_seconds: 20.0
+sample_rate: 16000
+notes: Sprint 4 Phase 1 full-file validation
