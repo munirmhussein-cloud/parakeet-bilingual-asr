@@ -194,6 +194,7 @@ def normalize_review_item(item: dict[str, Any], index: int) -> dict[str, Any]:
     return {
         "row_id": item["row_id"],
         "audio_id": item["audio_id"],
+        "audio_path": item.get("audio_path"),
         "word_index": item["word_index"],
         "global_start": item["global_start"],
         "global_end": item["global_end"],
@@ -255,6 +256,7 @@ def normalize_reconciliation_input(path: str | Path) -> dict[str, Any]:
         "schema_version": "normalized_review_items_v1",
         "created_at": utc_now_iso(),
         "source_file": str(path),
+        "source_audio": source.get("source_audio"),
         "items": normalized_items,
         "summary": {
             "total_items": len(normalized_items),

@@ -58,10 +58,27 @@ def format_flags(item: dict[str, Any]) -> str:
     return "No flags"
 
 
+def ms_to_mmss(value: Any) -> str:
+    try:
+        total_seconds = float(value) / 1000.0
+    except (TypeError, ValueError):
+        return "?:??"
+
+    minutes = int(total_seconds // 60)
+    seconds = int(total_seconds % 60)
+    milliseconds = int((total_seconds - int(total_seconds)) * 1000)
+
+    return f"{minutes}:{seconds:02d}.{milliseconds:03d}"
+
+
 def format_timestamp(item: dict[str, Any]) -> str:
+    local_start = item.get("local_start")
+    local_end = item.get("local_end")
+
     return (
+        f"segment: {ms_to_mmss(local_start)} → {ms_to_mmss(local_end)} | "
         f"global: {item.get('global_start')} → {item.get('global_end')} | "
-        f"local: {item.get('local_start')} → {item.get('local_end')}"
+        f"local: {local_start} → {local_end}"
     )
 
 
@@ -119,6 +136,29 @@ def render_item(items: list[dict[str, Any]], index: int):
     )
 
 
+
+def get_source_audio(normalized: dict[str, Any], items: list[dict[str, Any]]) -> str | None:
+    source_audio = normalized.get("source_audio")
+    if source_audio:
+        return str(source_audio)
+    if items:
+        audio_path = items[0].get("audio_path")
+        if audio_path:
+            return str(audio_path)
+    return None
+
+
+def get_row_choices(items: list[dict[str, Any]]) -> list[str]:
+    return [str(item.get("row_id", f"row_{i:05d}")) for i, item in enumerate(items)]
+
+
+def row_id_to_index(items: list[dict[str, Any]], row_id: str) -> int:
+    for i, item in enumerate(items):
+        if str(item.get("row_id", "")) == str(row_id):
+            return i
+    return 0
+
+
 def build_app(
     input_path: str | Path,
     progress_path: str | Path,
@@ -136,6 +176,8 @@ def build_app(
 
     items = store.overlay_progress(normalized["items"])
     start_index = store.get_resume_index(items)
+    source_audio = get_source_audio(normalized, items)
+    row_choices = get_row_choices(items)
 
     def export_gold():
         document = export_gold_annotations(
@@ -252,6 +294,12 @@ def build_app(
     def skip(index):
         return render_item(items, store.get_next_index(items, index))
 
+    def next_row(index):
+        return render_item(items, min(index + 1, len(items) - 1))
+
+    def jump_to_row(row_id):
+        return render_item(items, row_id_to_index(items, row_id))
+
     def save(index, selected_language, corrected_text):
         store.save_review(
             items,
@@ -328,31 +376,72 @@ def build_app(
 
             index_state = gr.State(start_index)
 
-            progress = gr.Textbox(label="Progress", interactive=False)
-            flag_status = gr.Textbox(label="Flag Status", interactive=False)
+            gr.Markdown("## Row Navigation")
+            row_dropdown = gr.Dropdown(
+                choices=row_choices,
+                value=row_choices[start_index] if row_choices else None,
+                label="Dropdown: row_id",
+            )
+
+            with gr.Row():
+                previous_btn = gr.Button("Previous Row")
+                jump_btn = gr.Button("Jump to Row", variant="primary")
+                next_row_btn = gr.Button("Next Row")
+
+            gr.Markdown("---")
+
             row_id = gr.Textbox(label="Row ID", interactive=False)
             timestamp = gr.Textbox(label="Timestamps", interactive=False)
             context = gr.Textbox(label="Context", interactive=False)
+
+            gr.Markdown("---")
+
+            audio_player = gr.Audio(
+                value=source_audio,
+                label="Full Segment Audio Player",
+                interactive=False,
+            )
+
+            gr.Markdown("---")
+
+            corrected_text = gr.Textbox(label="Corrected Text")
+
+            gr.Markdown("---")
 
             with gr.Row():
                 bronze_ar = gr.Textbox(label="Bronze AR", interactive=False)
                 bronze_en = gr.Textbox(label="Bronze EN", interactive=False)
 
+            gr.Markdown("---")
+
             selected_language = gr.Radio(
                 choices=LANGUAGE_CHOICES,
                 label="Selected Language",
             )
-            corrected_text = gr.Textbox(label="Corrected Text")
-            reviewer = gr.Textbox(label="Reviewer", interactive=False)
+
+            gr.Markdown("---")
 
             with gr.Row():
-                previous_btn = gr.Button("Previous")
-                skip_btn = gr.Button("Skip")
+                previous_segment_btn = gr.Button("Previous Segment", interactive=False)
+                next_segment_btn = gr.Button("Next Segment", interactive=False)
+
+            audio_source = gr.Textbox(
+                value=source_audio or "",
+                label="Audio source",
+                interactive=False,
+            )
+            progress = gr.Textbox(label="Progress", interactive=False)
+            reviewer = gr.Textbox(label="Reviewer", interactive=False)
+
+            gr.Markdown("---")
+
+            with gr.Row():
                 save_btn = gr.Button("Save")
                 save_next_btn = gr.Button("Save & Next", variant="primary")
                 export_btn = gr.Button("Export Gold")
 
             export_status = gr.Textbox(label="Export Status", interactive=False)
+            flag_status = gr.Textbox(visible=False)
 
             item_outputs = [
                 index_state,
@@ -371,7 +460,9 @@ def build_app(
             demo.load(fn=load_initial, outputs=item_outputs)
 
             previous_btn.click(fn=previous, inputs=index_state, outputs=item_outputs)
-            skip_btn.click(fn=skip, inputs=index_state, outputs=item_outputs)
+            next_row_btn.click(fn=next_row, inputs=index_state, outputs=item_outputs)
+            jump_btn.click(fn=jump_to_row, inputs=row_dropdown, outputs=item_outputs)
+
             save_btn.click(
                 fn=save,
                 inputs=[index_state, selected_language, corrected_text],
