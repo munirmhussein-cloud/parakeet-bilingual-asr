@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Audio Segments v1",
+  "type": "object",
+  "required": [
+    "source_audio_id",
+    "source_audio_filepath",
+    "segment_id",
+    "segment_audio_filepath",
+    "start_time",
+    "end_time",
+    "duration",
+    "sample_rate",
+    "channels",
+    "segmentation_method",
+    "segmentation_version",
+    "created_at",
+    "validation_status"
+  ],
+  "properties": {
+    "source_audio_id": {"type": "string"},
+    "source_audio_filepath": {"type": "string"},
+    "segment_id": {"type": "string"},
+    "segment_audio_filepath": {"type": "string"},
+    "start_time": {"type": "number", "minimum": 0},
+    "end_time": {"type": "number", "minimum": 0},
+    "duration": {"type": "number", "exclusiveMinimum": 0},
+    "sample_rate": {"type": "integer"},
+    "channels": {"type": "integer"},
+    "segmentation_method": {"type": "string"},
+    "segmentation_version": {"type": "string"},
+    "created_at": {"type": "string"},
+    "validation_status": {"type": "string"}
+  }
+}

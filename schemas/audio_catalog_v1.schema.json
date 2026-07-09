@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Audio Catalog v1",
+  "type": "object",
+  "required": [
+    "source_audio_id",
+    "source_audio_filepath",
+    "sha256",
+    "duration",
+    "sample_rate",
+    "channels",
+    "file_size_bytes",
+    "ingested_at",
+    "catalog_version",
+    "processing_status"
+  ],
+  "properties": {
+    "source_audio_id": {"type": "string"},
+    "source_audio_filepath": {"type": "string"},
+    "sha256": {"type": "string"},
+    "duration": {"type": "number"},
+    "sample_rate": {"type": "integer"},
+    "channels": {"type": "integer"},
+    "file_size_bytes": {"type": "integer"},
+    "ingested_at": {"type": "string"},
+    "catalog_version": {"type": "string"},
+    "processing_status": {"type": "string"},
+    "notes": {"type": "string"}
+  }
+}
