@@ -1,7 +1,14 @@
 import argparse
 import json
+import sys
 from collections import defaultdict
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.datasets.segment_metadata import SegmentMetadataResolver
 
 
 MILLISECONDS_THRESHOLD = 1000.0
@@ -131,6 +138,11 @@ def main():
         default=".",
         help="Base path used to verify relative audio_filepaths.",
     )
+    parser.add_argument(
+        "--segment-manifest",
+        default=None,
+        help="Optional segment manifest JSONL used as source of truth for audio_filepath and duration.",
+    )
     args = parser.parse_args()
 
     document = load_gold_document(args.input)
@@ -149,6 +161,11 @@ def main():
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     repo_root = Path(args.repo_root)
+    segment_resolver = (
+        SegmentMetadataResolver(args.segment_manifest)
+        if args.segment_manifest
+        else None
+    )
     rows = []
     errors = []
 
@@ -159,6 +176,20 @@ def main():
         first = group[0]
 
         audio_filepath = resolve_audio_filepath(first, document, source_document, args.audio_filepath)
+
+        segment_metadata = None
+        if segment_resolver is not None:
+            segment_metadata = segment_resolver.resolve(
+                segment_id=audio_id,
+                audio_filepath=audio_filepath,
+            )
+
+        if segment_metadata is not None:
+            audio_filepath = segment_metadata.get("audio_filepath", audio_filepath)
+            duration = segment_metadata.get("duration")
+        else:
+            duration = infer_duration_seconds(group, args.duration)
+
         if not audio_filepath:
             errors.append(f"{audio_id}: missing audio_filepath")
             continue
@@ -169,10 +200,11 @@ def main():
             errors.append(f"{audio_id}: audio file does not exist: {audio_filepath}")
             continue
 
-        duration = infer_duration_seconds(group, args.duration)
-        if duration is None or duration <= 0:
+        if duration is None or float(duration) <= 0:
             errors.append(f"{audio_id}: missing or invalid duration")
             continue
+
+        duration = round(float(duration), 3)
 
         if not text.strip():
             errors.append(f"{audio_id}: empty transcript text")
@@ -204,6 +236,8 @@ def main():
                 "manifest_rows": len(rows),
                 "audio_ids": list(grouped.keys()),
                 "duration_unit": "seconds",
+                "segment_manifest": args.segment_manifest,
+                "metadata_source": "segment_manifest" if args.segment_manifest else "gold_or_cli",
             },
             ensure_ascii=False,
             indent=2,
