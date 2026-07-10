@@ -64,3 +64,9 @@ parakeet-bilingual-asr/
 # Generated Gold validation artifacts
 data/annotations/gold_annotations_*.json
 data/annotations/gold_annotations_*.jsonl
+
+# Manifest browser generated artifacts
+data/annotations/events_manifest_browser/
+data/annotations/gold_manifest_browser/
+data/annotations/progress_manifest_browser/
+data/annotations/playback_clips/
