@@ -5,12 +5,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from threading import local
 from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.inference.parakeet_infer import RivaTranscriber
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +35,29 @@ TRANSIENT_ERROR_MARKERS = (
 )
 
 DEFAULT_RETRY_DELAYS = (2.0, 5.0, 15.0)
+
+_THREAD_STATE = local()
+
+
+def get_transcriber(language: str) -> RivaTranscriber:
+    transcriber = getattr(_THREAD_STATE, "transcriber", None)
+    transcriber_language = getattr(
+        _THREAD_STATE,
+        "transcriber_language",
+        None,
+    )
+
+    if (
+        transcriber is None
+        or transcriber_language != language
+    ):
+        transcriber = RivaTranscriber(
+            language=language,
+        )
+        _THREAD_STATE.transcriber = transcriber
+        _THREAD_STATE.transcriber_language = language
+
+    return transcriber
 
 
 def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
@@ -109,50 +139,39 @@ def run_one(
             "transient_errors": [],
         }
 
-    command = [
-        sys.executable,
-        "scripts/run_bronze_inference.py",
-        "--audio",
-        audio_path,
-        "--output",
-        str(output_path),
-        "--language",
-        language,
-        "--audio-id",
-        segment_id,
-    ]
-
     attempts: list[dict[str, Any]] = []
     maximum_attempts = 1 + len(retry_delays)
 
     for attempt_number in range(1, maximum_attempts + 1):
         started = time.perf_counter()
 
-        result = subprocess.run(
-            command,
-            cwd=REPO_ROOT,
-            env=os.environ.copy(),
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
+        try:
+            transcriber = get_transcriber(language)
 
-        elapsed = time.perf_counter() - started
-        output = result.stdout or ""
-        transient = (
-            result.returncode != 0
-            and is_transient_failure(output)
-        )
+            document = transcriber.transcribe(
+                audio_path,
+                audio_id=segment_id,
+            )
 
-        attempts.append({
-            "attempt": attempt_number,
-            "returncode": result.returncode,
-            "elapsed_seconds": round(elapsed, 3),
-            "transient": transient,
-            "output_tail": output[-2000:],
-        })
+            output_path.write_text(
+                json.dumps(
+                    document,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
 
-        if result.returncode == 0:
+            elapsed = time.perf_counter() - started
+
+            attempts.append({
+                "attempt": attempt_number,
+                "returncode": 0,
+                "elapsed_seconds": round(elapsed, 3),
+                "transient": False,
+            })
+
             return {
                 "segment_id": segment_id,
                 "audio_filepath": audio_path,
@@ -164,12 +183,29 @@ def run_one(
                 "attempts": attempts,
             }
 
-        if not transient:
-            break
+        except Exception as exc:
+            elapsed = time.perf_counter() - started
+            output = repr(exc)
+            transient = is_transient_failure(output)
 
-        if attempt_number <= len(retry_delays):
-            delay = retry_delays[attempt_number - 1]
-            time.sleep(delay)
+            attempts.append({
+                "attempt": attempt_number,
+                "returncode": 1,
+                "elapsed_seconds": round(elapsed, 3),
+                "transient": transient,
+                "error": output,
+            })
+
+            # Recreate this worker's channel on the next retry.
+            _THREAD_STATE.transcriber = None
+            _THREAD_STATE.transcriber_language = None
+
+            if not transient:
+                break
+
+            if attempt_number <= len(retry_delays):
+                delay = retry_delays[attempt_number - 1]
+                time.sleep(delay)
 
     return {
         "segment_id": segment_id,

@@ -87,6 +87,104 @@ def _extract_words_from_riva_response(response: Any) -> list[dict[str, Any]]:
     ]
 
 
+class RivaTranscriber:
+    """Reusable Riva ASR client for multiple segment requests."""
+
+    def __init__(
+        self,
+        *,
+        language: str,
+        model_name: str | None = None,
+        server: str = DEFAULT_RIVA_SERVER,
+        function_id: str = DEFAULT_RIVA_FUNCTION_ID,
+        api_key: str | None = None,
+        use_ssl: bool = True,
+        automatic_punctuation: bool = True,
+        verbatim_transcripts: bool = True,
+        max_alternatives: int = 1,
+    ) -> None:
+        api_key = api_key or os.environ.get("NVIDIA_API_KEY")
+
+        if not api_key:
+            raise RuntimeError(
+                "Missing NVIDIA API key. Set NVIDIA_API_KEY."
+            )
+
+        try:
+            import riva.client
+        except Exception as exc:
+            raise RuntimeError(
+                "nvidia-riva-client is not installed."
+            ) from exc
+
+        metadata = [
+            ("function-id", function_id),
+            ("authorization", f"Bearer {api_key}"),
+        ]
+
+        self.auth = riva.client.Auth(
+            uri=server,
+            use_ssl=use_ssl,
+            metadata_args=metadata,
+        )
+        self.asr_service = riva.client.ASRService(self.auth)
+
+        config_kwargs = {
+            "language_code": language,
+            "max_alternatives": max_alternatives,
+            "enable_word_time_offsets": True,
+            "enable_automatic_punctuation": automatic_punctuation,
+            "verbatim_transcripts": verbatim_transcripts,
+        }
+
+        if model_name:
+            config_kwargs["model"] = model_name
+
+        self.config = riva.client.RecognitionConfig(
+            **config_kwargs
+        )
+
+        self.language = language
+        self.model_name = model_name
+        self.server = server
+        self.function_id = function_id
+
+    def transcribe(
+        self,
+        audio_path: str | Path,
+        *,
+        audio_id: str | None = None,
+    ) -> dict[str, Any]:
+        audio_path = Path(audio_path)
+
+        if not audio_path.exists():
+            raise FileNotFoundError(
+                f"Audio file not found: {audio_path}"
+            )
+
+        with audio_path.open("rb") as handle:
+            audio_bytes = handle.read()
+
+        response = self.asr_service.offline_recognize(
+            audio_bytes,
+            self.config,
+        )
+
+        words = _extract_words_from_riva_response(response)
+
+        return {
+            "schema_version": "bronze_transcript_v1",
+            "audio_id": audio_id or audio_path.stem,
+            "audio_path": str(audio_path),
+            "backend": "riva_endpoint",
+            "server": self.server,
+            "function_id": self.function_id,
+            "model_name": self.model_name,
+            "language": self.language,
+            "words": words,
+        }
+
+
 def transcribe_file(
     audio_path: str | Path,
     *,
@@ -101,72 +199,21 @@ def transcribe_file(
     verbatim_transcripts: bool = True,
     max_alternatives: int = 1,
 ) -> dict[str, Any]:
-    """
-    Transcribe one WAV file through Riva and return Bronze-compatible JSON.
-
-    Args:
-        model_name: Optional Riva model name. For the hosted Sprint 1 endpoint,
-            language forcing is controlled primarily through language_code.
-        language: Forced language code, e.g. ar-AR or en-US.
-    """
-    audio_path = Path(audio_path)
-
-    if not audio_path.exists():
-        raise FileNotFoundError(f"Audio file not found: {audio_path}")
-
-    api_key = api_key or os.environ.get("NVIDIA_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "Missing NVIDIA API key. Set NVIDIA_API_KEY or pass --api-key-env."
-        )
-
-    try:
-        import riva.client
-    except Exception as exc:
-        raise RuntimeError(
-            "nvidia-riva-client is not installed. Run: pip install -U nvidia-riva-client"
-        ) from exc
-
-    metadata = [
-        ("function-id", function_id),
-        ("authorization", f"Bearer {api_key}"),
-    ]
-
-    auth = riva.client.Auth(
-        uri=server,
+    """Backward-compatible single-file inference wrapper."""
+    client = RivaTranscriber(
+        language=language,
+        model_name=model_name,
+        server=server,
+        function_id=function_id,
+        api_key=api_key,
         use_ssl=use_ssl,
-        metadata_args=metadata,
+        automatic_punctuation=automatic_punctuation,
+        verbatim_transcripts=verbatim_transcripts,
+        max_alternatives=max_alternatives,
     )
 
-    asr_service = riva.client.ASRService(auth)
+    return client.transcribe(
+        audio_path,
+        audio_id=audio_id,
+    )
 
-    config_kwargs = {
-        "language_code": language,
-        "max_alternatives": max_alternatives,
-        "enable_word_time_offsets": True,
-        "enable_automatic_punctuation": automatic_punctuation,
-        "verbatim_transcripts": verbatim_transcripts,
-    }
-
-    if model_name:
-        config_kwargs["model"] = model_name
-
-    config = riva.client.RecognitionConfig(**config_kwargs)
-
-    with audio_path.open("rb") as handle:
-        audio_bytes = handle.read()
-
-    response = asr_service.offline_recognize(audio_bytes, config)
-    words = _extract_words_from_riva_response(response)
-
-    return {
-        "schema_version": "bronze_transcript_v1",
-        "audio_id": audio_id or audio_path.stem,
-        "audio_path": str(audio_path),
-        "backend": "riva_endpoint",
-        "server": server,
-        "function_id": function_id,
-        "model_name": model_name,
-        "language": language,
-        "words": words,
-    }
