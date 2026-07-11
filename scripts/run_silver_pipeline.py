@@ -47,6 +47,17 @@ def main() -> None:
     parser.add_argument("--segment-seconds", type=float, default=20.0)
     parser.add_argument("--sample-rate", type=int, default=16000)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Concurrent Riva inference workers per language.",
+    )
+    parser.add_argument(
+        "--force-inference",
+        action="store_true",
+        help="Re-run Bronze outputs even when valid files exist.",
+    )
     args = parser.parse_args()
 
     audio_path = Path(args.audio).resolve()
@@ -183,6 +194,13 @@ def main() -> None:
         "en-US",
         "--output-dir",
         str(paths["bronze_en"]),
+        "--workers",
+        str(args.workers),
+        *(
+            ["--force"]
+            if args.force_inference
+            else []
+        ),
     ])
 
     run([
@@ -194,6 +212,13 @@ def main() -> None:
         "ar-AR",
         "--output-dir",
         str(paths["bronze_ar"]),
+        "--workers",
+        str(args.workers),
+        *(
+            ["--force"]
+            if args.force_inference
+            else []
+        ),
     ])
 
     run([
