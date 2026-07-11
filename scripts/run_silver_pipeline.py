@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import unicodedata
+import time
 from pathlib import Path
 
 
@@ -23,14 +24,40 @@ def slugify(value: str) -> str:
     return value.strip("_")
 
 
-def run(command: list[str]) -> None:
-    print("\n$", " ".join(command))
-    subprocess.run(
-        command,
-        cwd=REPO_ROOT,
-        env=os.environ.copy(),
-        check=True,
+STAGE_TIMINGS: list[dict[str, object]] = []
+
+
+def run(
+    command: list[str],
+    *,
+    stage: str | None = None,
+) -> None:
+    label = stage or Path(command[1]).stem
+    started = time.perf_counter()
+
+    print(
+        f"\\n[{label}] $",
+        " ".join(command),
+        flush=True,
     )
+
+    try:
+        subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            env=os.environ.copy(),
+            check=True,
+        )
+    finally:
+        elapsed = time.perf_counter() - started
+        STAGE_TIMINGS.append({
+            "stage": label,
+            "seconds": round(elapsed, 3),
+        })
+        print(
+            f"[{label}] elapsed: {elapsed:.2f}s",
+            flush=True,
+        )
 
 
 def main() -> None:
@@ -181,7 +208,7 @@ def main() -> None:
             str(args.sample_rate),
             "--notes",
             "Automatic SILVER pipeline",
-        ])
+        ], stage="audio_preparation")
     else:
         print("\nSkipping audio preparation: outputs already exist.")
 
@@ -201,7 +228,7 @@ def main() -> None:
             if args.force_inference
             else []
         ),
-    ])
+    ], stage="bronze_en")
 
     run([
         sys.executable,
@@ -219,7 +246,7 @@ def main() -> None:
             if args.force_inference
             else []
         ),
-    ])
+    ], stage="bronze_ar")
 
     run([
         sys.executable,
@@ -232,7 +259,7 @@ def main() -> None:
         str(paths["bronze_en"]),
         "--output-dir",
         str(paths["reconciliation"]),
-    ])
+    ], stage="reconciliation")
 
     run([
         sys.executable,
@@ -245,7 +272,7 @@ def main() -> None:
         str(paths["silver_jsonl"]),
         "--report",
         str(paths["silver_report"]),
-    ])
+    ], stage="silver_export")
 
     report = json.loads(
         paths["silver_report"].read_text(encoding="utf-8")
@@ -259,6 +286,45 @@ def main() -> None:
     print("Exported segments:", report["exported_segments"])
     print("Exported rows:", report["exported_rows"])
     print("Empty segments:", report["empty_segment_count"])
+
+    timing_total = sum(
+        float(item["seconds"])
+        for item in STAGE_TIMINGS
+    )
+
+    print("\\nStage timings:")
+    for item in STAGE_TIMINGS:
+        percentage = (
+            100.0 * float(item["seconds"]) / timing_total
+            if timing_total
+            else 0.0
+        )
+        print(
+            f"  {item['stage']}: "
+            f"{item['seconds']:.2f}s "
+            f"({percentage:.1f}%)"
+        )
+
+    timing_path = (
+        paths["silver_report"].parent
+        / f"{source_audio_id}_pipeline_timings.json"
+    )
+
+    timing_path.write_text(
+        json.dumps(
+            {
+                "source_audio_id": source_audio_id,
+                "total_seconds": round(timing_total, 3),
+                "stages": STAGE_TIMINGS,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    print("Timing report:", timing_path)
 
 
 if __name__ == "__main__":

@@ -277,7 +277,24 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {
+                "schema_version": report["schema_version"],
+                "manifest_segments": report["manifest_segments"],
+                "exported_segments": report["exported_segments"],
+                "empty_segment_count": report["empty_segment_count"],
+                "exported_rows": report["exported_rows"],
+                "language_counts": report["language_counts"],
+                "assignment_method_counts": report[
+                    "assignment_method_counts"
+                ],
+                "output_jsonl": report["output_jsonl"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
