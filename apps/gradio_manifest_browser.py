@@ -582,7 +582,26 @@ def main():
         manifest_path=args.manifest,
         reconciliation_dir=args.reconciliation_dir,
     )
-    app.launch(share=args.share, debug=True)
+    allowed_paths = sorted({
+        str(
+            Path(row["audio_filepath"])
+            .expanduser()
+            .resolve()
+            .parent
+        )
+        for row in load_manifest(args.manifest)
+        if row.get("audio_filepath")
+    })
+
+    print("Allowed audio directories:")
+    for path in allowed_paths:
+        print(" -", path)
+
+    app.launch(
+        share=args.share,
+        debug=True,
+        allowed_paths=allowed_paths,
+    )
 
 
 if __name__ == "__main__":
