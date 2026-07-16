@@ -1,0 +1,37 @@
+{
+  "schema_version": "silver_plus_v3_resolution_config_v1",
+  "pipeline_stage": "silver_plus_v3",
+  "silver_input": "silver_v3",
+  "canonical_output_window_seconds": 20.0,
+  "pyannote": {
+    "input": "canonical_20s_audio_segments",
+    "role": "speech-turn decomposition",
+    "timestamps_determine_azure_audio_calls": true,
+    "child_spans_preserved": true
+  },
+  "azure": {
+    "engine": "Microsoft Azure Speech to Text",
+    "mode": "speech_to_text_on_pyannote_clips",
+    "locale": "ar-SA",
+    "forced_locale": true,
+    "called_on": "pyannote_speech_turn_clips"
+  },
+  "parent_reconstruction": {
+    "method": "chronological_pyannote_child_order",
+    "parent_span_source": "canonical_20s_manifest"
+  },
+  "resolution": {
+    "method": "silver_plus_v2_parent_resolution_with_silver_v3_fallback",
+    "rule": "azure_parent_if_populated_else_silver_v3",
+    "azure_used_inside_silver_v3_lattice": false,
+    "token_level_merge": false,
+    "human_review": false
+  },
+  "validation_gates": {
+    "segment_count_matches_silver_v3": true,
+    "segment_ids_match_silver_v3": true,
+    "canonical_parent_spans_match_exactly": true,
+    "pyannote_child_chronology_errors": 0,
+    "segment_ids_unique": true
+  }
+}

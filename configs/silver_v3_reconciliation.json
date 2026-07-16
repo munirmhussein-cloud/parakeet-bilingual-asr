@@ -1,0 +1,54 @@
+{
+  "schema_version": "silver_v3_reconciliation_config_v1",
+  "pipeline_stage": "silver_v3",
+  "engine": "NVIDIA Parakeet",
+  "language_request": "en-US",
+  "single_language_pass": true,
+  "canonical_output_window_seconds": 20.0,
+  "views": {
+    "whole_lecture": {
+      "window": "entire lecture",
+      "stride_seconds": null,
+      "role": "global chronological and lexical evidence"
+    },
+    "canonical_20s": {
+      "window_seconds": 20.0,
+      "stride_seconds": 20.0,
+      "role": "authoritative output segment boundaries"
+    },
+    "context_10s_stride_5s": {
+      "window_seconds": 10.0,
+      "stride_seconds": 5.0,
+      "role": "overlapping phrase and boundary evidence"
+    },
+    "local_2p5s_contiguous": {
+      "window_seconds": 2.5,
+      "stride_seconds": 2.5,
+      "role": "local omission evidence"
+    }
+  },
+  "reconciliation": {
+    "method": "time_keyed_multiview_align_then_vote_v1",
+    "concatenate_transcripts": false,
+    "select_one_source_per_segment": false,
+    "collapse_context_self_overlap_before_multiview_alignment": true,
+    "retain_single_witness_tokens": true,
+    "single_witness_action": "accept_and_flag",
+    "preserve_alternates": true,
+    "preserve_per_view_provenance": true,
+    "canonical_parent_spans": "canonical_20s_manifest"
+  },
+  "acceptance_tiers": {
+    "A_corroborated": "Winning token observed by two or more independent views.",
+    "B_stride_self_corroborated": "Winning token observed in multiple overlapping 10-second windows.",
+    "C_single_witness": "Winning token observed by one source only; retain and flag."
+  },
+  "validation_gates": {
+    "segment_order_preserved": true,
+    "segment_ids_unique": true,
+    "chronology_regressions": 0,
+    "unaccounted_evidence_observations": 0,
+    "immediate_duplicate_6grams": 0,
+    "deterministic_json_output": true
+  }
+}
