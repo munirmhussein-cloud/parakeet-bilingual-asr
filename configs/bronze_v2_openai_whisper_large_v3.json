@@ -1,0 +1,15 @@
+{
+  "schema_version": "bronze_v2_openai_whisper_large_v3_config_v1",
+  "pipeline_version": "bronze_v2",
+  "engine": "openai-whisper",
+  "implementation": "official_openai_whisper",
+  "model": "large-v3",
+  "language": null,
+  "language_forced": false,
+  "inference_unit": "whole_lecture",
+  "word_timestamps": true,
+  "beam_size": 5,
+  "temperature": 0.0,
+  "condition_on_previous_text": true,
+  "reconciliation": false
+}
