@@ -56,7 +56,7 @@ def atomic_write_json(
             ensure_ascii=False,
             indent=2,
         )
-        handle.write("\\n")
+        handle.write("\n")
         handle.flush()
         os.fsync(handle.fileno())
 
@@ -85,7 +85,7 @@ def atomic_write_jsonl(
                     separators=(",", ":"),
                 )
             )
-            handle.write("\\n")
+            handle.write("\n")
 
         handle.flush()
         os.fsync(handle.fileno())
