@@ -1,0 +1,13 @@
+{
+  "schema_version": "bronze_v3_azure_fast_config_v1",
+  "pipeline_version": "bronze_v3",
+  "engine": "azure-speech",
+  "mode": "fast_transcription_rest",
+  "api_version": "2025-10-15",
+  "locales": [
+    "en-US",
+    "ar-SA"
+  ],
+  "inference_unit": "whole_lecture",
+  "reconciliation": false
+}
