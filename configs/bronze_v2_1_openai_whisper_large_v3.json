@@ -1,0 +1,15 @@
+{
+  "schema_version": "bronze_v2_1_openai_whisper_config_v1",
+  "pipeline_version": "bronze_v2_1",
+  "engine": "openai-whisper",
+  "implementation": "official_openai_whisper",
+  "model": "large-v3",
+  "language": null,
+  "language_forced": false,
+  "inference_unit": "canonical_20s_segment",
+  "runner_count": 12,
+  "assignment_method": "segment_index_modulo_runner_count",
+  "condition_on_previous_text": false,
+  "word_timestamps": true,
+  "reconciliation": false
+}
