@@ -38,52 +38,74 @@ def finite_number(value: object) -> float | None:
     return number if math.isfinite(number) else None
 
 
-def classify_raw_timing(raw_words: list[dict], duration: float) -> tuple[bool, str]:
-    """Return whether raw word timing is credible for this document.
+def classify_raw_timing(
+    raw_words: list[dict],
+    *,
+    window_start: float,
+    window_end: float,
+) -> tuple[str | None, str]:
+    """Detect whether hosted timestamps are local or already global.
 
-    Hosted Parakeet may emit no timing fields or zero placeholders. Those must
-    remain semantically missing so the pilot's monotonic interpolation path is
-    used; converting them to 0.0 destroys multiview alignment.
+    The validated pilot preserved real global timestamps. Production previously
+    assumed every timestamp was local and added the window offset again. This
+    routine scores both coordinate systems and only interpolates when neither
+    is credible.
     """
     timed: list[tuple[float, float]] = []
     for word in raw_words:
         start = finite_number(word.get("start"))
         end = finite_number(word.get("end"))
         if start is None or end is None:
-            return False, "missing_fields"
+            return None, "missing_fields"
         timed.append((start, end))
 
     if not timed:
-        return False, "no_words"
+        return None, "no_words"
 
-    if any(start < -1e-6 or end < start - 1e-6 or end > duration + 1e-3 for start, end in timed):
-        return False, "out_of_range"
-
+    duration = max(0.0, window_end - window_start)
     unique_pairs = {(round(start, 6), round(end, 6)) for start, end in timed}
     positive_duration = sum(end - start > 1e-4 for start, end in timed)
 
     if len(timed) > 1 and len(unique_pairs) <= 1:
-        return False, "single_timestamp"
+        return None, "single_timestamp"
     if len(timed) > 2 and positive_duration / len(timed) < 0.25:
-        return False, "mostly_zero_duration"
+        return None, "mostly_zero_duration"
     if len(timed) > 2 and all(abs(start) <= 1e-6 and abs(end) <= 1e-6 for start, end in timed):
-        return False, "all_zero"
+        return None, "all_zero"
 
     previous = -math.inf
     for start, _ in timed:
         if start < previous - 1e-6:
-            return False, "non_monotonic"
+            return None, "non_monotonic"
         previous = start
 
-    return True, "credible_raw"
+    tolerance = 0.75
+    local_fit = sum(
+        start >= -tolerance
+        and end >= start - tolerance
+        and end <= duration + tolerance
+        for start, end in timed
+    ) / len(timed)
+    global_fit = sum(
+        start >= window_start - tolerance
+        and end >= start - tolerance
+        and end <= window_end + tolerance
+        for start, end in timed
+    ) / len(timed)
+
+    if global_fit >= 0.95 and global_fit > local_fit + 0.05:
+        return "global", "credible_raw_global"
+    if local_fit >= 0.95:
+        return "local", "credible_raw_local"
+    if global_fit >= 0.95:
+        return "global", "credible_raw_global"
+    return None, "out_of_range"
 
 
 def interpolate_timing(position: int, count: int, duration: float) -> tuple[float, float]:
     if count <= 0:
         return 0.0, 0.0
-    start = duration * position / count
-    end = duration * (position + 1) / count
-    return start, end
+    return duration * position / count, duration * (position + 1) / count
 
 
 def parse_args() -> argparse.Namespace:
@@ -133,33 +155,46 @@ def main() -> int:
             window_start = float(manifest_row.get("global_start", manifest_row.get("offset", 0.0)))
             window_end = float(manifest_row.get("global_end", window_start + float(manifest_row["duration"])))
             duration = max(0.0, window_end - window_start)
-
             raw_words = [
                 word for word in (raw.get("words", []) if isinstance(raw.get("words"), list) else [])
                 if isinstance(word, dict) and str(word.get("text", "")).strip()
             ]
             source_word_count += len(raw_words)
-            raw_is_credible, timing_reason = classify_raw_timing(raw_words, duration)
+            timing_basis, timing_reason = classify_raw_timing(
+                raw_words,
+                window_start=window_start,
+                window_end=window_end,
+            )
             timing_reason_counts[timing_reason] += 1
-            timing_method = "validated_raw_local_timestamp" if raw_is_credible else "monotonic_window_interpolation"
+            timing_method = {
+                "global": "validated_raw_global_timestamp",
+                "local": "validated_raw_local_timestamp",
+                None: "monotonic_window_interpolation",
+            }[timing_basis]
             timing_method_counts[timing_method] += len(raw_words)
 
             words: list[dict] = []
             previous_start: float | None = None
             for position, word in enumerate(raw_words):
                 text = str(word.get("text", "")).strip()
-                if raw_is_credible:
-                    local_start = float(word["start"])
-                    local_end = float(word["end"])
+                if timing_basis == "global":
+                    global_start = min(max(float(word["start"]), window_start), window_end)
+                    global_end = min(max(float(word["end"]), global_start), window_end)
+                    local_start = global_start - window_start
+                    local_end = global_end - window_start
+                elif timing_basis == "local":
+                    local_start = min(max(float(word["start"]), 0.0), duration)
+                    local_end = min(max(float(word["end"]), local_start), duration)
+                    global_start = window_start + local_start
+                    global_end = window_start + local_end
                 else:
                     local_start, local_end = interpolate_timing(position, len(raw_words), duration)
+                    global_start = window_start + local_start
+                    global_end = window_start + local_end
 
-                global_start = min(max(window_start + local_start, window_start), window_end)
-                global_end = min(max(window_start + local_end, global_start), window_end)
                 if previous_start is not None and global_start < previous_start - 1e-6:
                     chronology_errors.append({"segment_id": segment_id, "word_position": position})
                 previous_start = global_start
-
                 words.append({
                     "word_position": position,
                     "text": text,
@@ -174,7 +209,7 @@ def main() -> int:
 
             normalized_word_count += len(words)
             normalized_rows.append({
-                "schema_version": "silver_v3_normalized_parakeet_view_v2",
+                "schema_version": "silver_v3_normalized_parakeet_view_v3",
                 "lecture_id": args.lecture_id,
                 "view": view_name,
                 "segment_id": segment_id,
@@ -227,7 +262,7 @@ def main() -> int:
 
     passed = all(report["passed"] for report in view_reports.values())
     report = {
-        "schema_version": "silver_v3_normalization_report_v2",
+        "schema_version": "silver_v3_normalization_report_v3",
         "lecture_id": args.lecture_id,
         "wall_seconds": round(time.perf_counter() - started, 3),
         "views": view_reports,
