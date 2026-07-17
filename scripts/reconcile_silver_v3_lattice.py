@@ -782,6 +782,341 @@ def resolve_slot(
     }
 
 
+def _refresh_resolved_token_evidence(
+    token: dict[str, Any],
+) -> None:
+    """
+    Recompute evidence-derived fields after merging duplicate slots.
+
+    This preserves every source observation while converting repeated
+    single-witness context evidence into stride self-corroboration when
+    multiple overlapping context windows support the retained token.
+    """
+    observations = token.get("observations", [])
+
+    unique_observations = {}
+    for observation in observations:
+        observation_id = str(
+            observation.get("observation_id", "")
+        )
+
+        if observation_id:
+            unique_observations[
+                observation_id
+            ] = observation
+
+    token["observations"] = list(
+        unique_observations.values()
+    )
+
+    token["observation_ids"] = sorted(
+        unique_observations
+    )
+
+    token["observation_count"] = len(
+        unique_observations
+    )
+
+    views = sorted(
+        {
+            str(observation["view"])
+            for observation
+            in unique_observations.values()
+        }
+    )
+
+    source_ids = sorted(
+        {
+            str(observation["source_id"])
+            for observation
+            in unique_observations.values()
+        }
+    )
+
+    token["views"] = views
+    token["witness_view_count"] = len(views)
+
+    if len(views) >= 2:
+        tier = "A_corroborated"
+    elif (
+        len(source_ids) >= 2
+        and views
+        == ["context_10s_stride_5s"]
+    ):
+        tier = "B_stride_self_corroborated"
+    else:
+        tier = "C_single_witness"
+
+    token["acceptance_tier"] = tier
+    token["single_witness"] = (
+        tier == "C_single_witness"
+    )
+
+
+def collapse_suspicious_duplicate_ngrams(
+    resolved_tokens: list[dict[str, Any]],
+    *,
+    n: int = 6,
+    maximum_center_spread: float = 0.25,
+    maximum_gap_tokens: int = 2,
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+]:
+    """
+    Collapse immediate duplicate n-grams caused by overlapping ASR windows.
+
+    A sequence is collapsed only when:
+
+    - normalized token sequences are identical;
+    - the spans are adjacent after ignoring punctuation;
+    - the separating raw-token gap is small;
+    - every participating token is single-witness;
+    - all participating tokens use the same view set;
+    - their estimated centers are effectively identical.
+
+    The second span's observations are merged into the first span before
+    deletion, preserving the zero-drop invariant.
+    """
+    tokens = list(resolved_tokens)
+    collapses = []
+
+    while True:
+        lexical = [
+            {
+                "raw_position": position,
+                "normalized": normalize_token(
+                    str(token.get("text", ""))
+                ),
+            }
+            for position, token in enumerate(tokens)
+            if normalize_token(
+                str(token.get("text", ""))
+            )
+        ]
+
+        match = None
+
+        for lexical_start in range(
+            0,
+            len(lexical) - (2 * n) + 1,
+        ):
+            first = lexical[
+                lexical_start:
+                lexical_start + n
+            ]
+
+            second = lexical[
+                lexical_start + n:
+                lexical_start + (2 * n)
+            ]
+
+            first_normalized = [
+                item["normalized"]
+                for item in first
+            ]
+
+            second_normalized = [
+                item["normalized"]
+                for item in second
+            ]
+
+            if first_normalized != second_normalized:
+                continue
+
+            first_positions = [
+                item["raw_position"]
+                for item in first
+            ]
+
+            second_positions = [
+                item["raw_position"]
+                for item in second
+            ]
+
+            gap_size = (
+                second_positions[0]
+                - first_positions[-1]
+                - 1
+            )
+
+            if gap_size > maximum_gap_tokens:
+                continue
+
+            participating = [
+                tokens[position]
+                for position in (
+                    first_positions
+                    + second_positions
+                )
+            ]
+
+            if not all(
+                token.get("single_witness") is True
+                for token in participating
+            ):
+                continue
+
+            view_sets = {
+                tuple(token.get("views", []))
+                for token in participating
+            }
+
+            if len(view_sets) != 1:
+                continue
+
+            centers = [
+                safe_float(token.get("center"))
+                for token in participating
+            ]
+
+            if any(
+                center is None
+                for center in centers
+            ):
+                continue
+
+            center_spread = (
+                max(centers)
+                - min(centers)
+            )
+
+            if (
+                center_spread
+                > maximum_center_spread
+            ):
+                continue
+
+            match = {
+                "lexical_start":
+                lexical_start,
+
+                "normalized_ngram":
+                first_normalized,
+
+                "first_positions":
+                first_positions,
+
+                "second_positions":
+                second_positions,
+
+                "gap_size":
+                gap_size,
+
+                "center_spread":
+                center_spread,
+
+                "views":
+                list(next(iter(view_sets))),
+            }
+
+            break
+
+        if match is None:
+            break
+
+        for first_position, second_position in zip(
+            match["first_positions"],
+            match["second_positions"],
+        ):
+            retained = tokens[first_position]
+            duplicate = tokens[second_position]
+
+            retained.setdefault(
+                "observations",
+                [],
+            ).extend(
+                duplicate.get(
+                    "observations",
+                    [],
+                )
+            )
+
+            retained.setdefault(
+                "alternates",
+                [],
+            ).extend(
+                duplicate.get(
+                    "alternates",
+                    [],
+                )
+            )
+
+            _refresh_resolved_token_evidence(
+                retained
+            )
+
+        # Retain punctuation or other non-lexical tokens between the two
+        # lexical spans. Only the duplicated second n-gram is removed.
+        # This preserves its provenance and the zero-drop invariant.
+        removal_start = (
+            match["second_positions"][0]
+        )
+
+        removal_end = (
+            match["second_positions"][-1]
+        )
+
+        removed_tokens = tokens[
+            removal_start:
+            removal_end + 1
+        ]
+
+        del tokens[
+            removal_start:
+            removal_end + 1
+        ]
+
+        collapses.append(
+            {
+                "normalized_ngram":
+                match["normalized_ngram"],
+
+                "first_raw_start":
+                match["first_positions"][0],
+
+                "second_raw_start":
+                match["second_positions"][0],
+
+                "removed_raw_start":
+                removal_start,
+
+                "removed_raw_end":
+                removal_end,
+
+                "removed_token_count":
+                len(removed_tokens),
+
+                "removed_surfaces":
+                [
+                    token.get("text")
+                    for token in removed_tokens
+                ],
+
+                "center_spread":
+                round(
+                    match["center_spread"],
+                    6,
+                ),
+
+                "views":
+                match["views"],
+
+                "reason":
+                (
+                    "adjacent_single_witness_"
+                    "same_center_overlap_artifact"
+                ),
+            }
+        )
+
+    for position, token in enumerate(tokens):
+        token["slot_id"] = position
+
+    return tokens, collapses
+
+
+
 def immediate_duplicate_ngram_count(
     tokens: list[str],
     n: int = 6,
@@ -1041,6 +1376,7 @@ def main() -> int:
     all_accounted_observation_ids = set()
 
     immediate_duplicate_6grams = 0
+    duplicate_overlap_collapse_count = 0
     chronology_errors = []
 
     previous_segment_end = None
@@ -1213,6 +1549,14 @@ def main() -> int:
             for slot in slots
         ]
 
+        (
+            resolved_tokens,
+            duplicate_collapses,
+        ) = collapse_suspicious_duplicate_ngrams(
+            resolved_tokens,
+            n=6,
+        )
+
         for token in resolved_tokens:
             for observation in token[
                 "observations"
@@ -1251,6 +1595,10 @@ def main() -> int:
 
         immediate_duplicate_6grams += (
             duplicate_count
+        )
+
+        duplicate_overlap_collapse_count += (
+            len(duplicate_collapses)
         )
 
         tier_counts = dict(
@@ -1314,6 +1662,12 @@ def main() -> int:
             ),
             "immediate_duplicate_6gram_count": (
                 duplicate_count
+            ),
+            "duplicate_overlap_collapses": (
+                duplicate_collapses
+            ),
+            "duplicate_overlap_collapse_count": (
+                len(duplicate_collapses)
             ),
             "tokens": resolved_tokens,
             "reconciliation": {
@@ -1449,6 +1803,18 @@ def main() -> int:
         "immediate_duplicate_6gram_count": (
             immediate_duplicate_6grams
         ),
+        "duplicate_overlap_collapse_count": (
+            duplicate_overlap_collapse_count
+        ),
+        "empty_segment_count": sum(
+            not row["has_silver_text"]
+            for row in output_rows
+        ),
+        "empty_segment_ids": [
+            row["segment_id"]
+            for row in output_rows
+            if not row["has_silver_text"]
+        ],
         "all_segments_populated": all(
             row["has_silver_text"]
             for row in output_rows

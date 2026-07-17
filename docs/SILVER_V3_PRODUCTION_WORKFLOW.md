@@ -41,3 +41,42 @@ six-grams. This discrepancy must be resolved in the validator before Silver v3
 is marked fully passed.
 
 The final partial canonical segment, 2740.0 to 2744.23075 seconds, was empty.
+
+## Final reconciliation validation
+
+Lecture 001 exposed one overlapping-context duplication:
+
+`for only one of his servants`
+
+Both copies came from overlapping context windows with the same 
+estimated center. The reconciler merges the duplicate evidence 
+into the retained tokens, removes only the second lexical span, 
+and preserves separator punctuation and the zero-drop invariant.
+
+Final Lecture 001 validation:
+
+- 138 canonical segments;
+- 14,222 reconciled tokens;
+- one overlap collapse;
+- zero remaining immediate duplicate six-grams;
+- zero chronology errors;
+- zero unaccounted observations;
+- zero-drop invariant passed;
+- one explicit empty trailing segment from 2740.0 to 2744.23075 seconds.
+
+Finalize a completed multiview lecture:
+
+```bash
+python scripts/run_silver_v3.py \
+  --lecture-id lecture_001 \
+  --lecture-root /path/to/lectures/lecture_001
+```
+
+Export a portable package:
+
+```bash
+python scripts/export_silver_v3_package.py \
+  --lecture-id lecture_001 \
+  --lecture-root /path/to/lectures/lecture_001 \
+  --output-root /path/to/exports/silver_v3
+```
