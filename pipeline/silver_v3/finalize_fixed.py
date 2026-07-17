@@ -60,7 +60,7 @@ def main() -> int:
 
     normalized_root = silver_root / "normalized"
     normalization_report = silver_root / "silver_v3_normalization_report.json"
-    canonical_manifest = silver_root / "manifests" / f"{args.lecture_id}_canonical_20s.jsonl"
+    canonical_manifest = silver_root / "manifests" / f"{args.lecture_id}_canonical_manifest.jsonl"
     segment_jsonl = output_dir / f"{output_prefix}_segment_level.jsonl"
     quality_report = output_dir / f"{output_prefix}_quality_report.json"
     run_report = output_dir / f"{output_prefix}_finalization_report.json"
@@ -68,6 +68,7 @@ def main() -> int:
     required = [
         canonical_manifest,
         silver_root / "manifests" / f"{args.lecture_id}_whole.jsonl",
+        silver_root / "manifests" / f"{args.lecture_id}_canonical_20s.jsonl",
         silver_root / "manifests" / f"{args.lecture_id}_context_10s_stride_5s.jsonl",
         silver_root / "manifests" / f"{args.lecture_id}_local_2p5s_contiguous.jsonl",
     ]
