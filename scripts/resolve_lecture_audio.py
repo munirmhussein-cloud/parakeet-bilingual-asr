@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 AUDIO_SUFFIXES = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".aac"}
@@ -15,16 +16,33 @@ EXCLUDED_PARTS = {
     "raw_parakeet",
     "normalized",
 }
+LECTURE_ID_RE = re.compile(r"^lecture_(\d+)$", re.IGNORECASE)
+SEERAH_NUMBER_RE = re.compile(r"^seerah\D*0*(\d{1,3})(?!\d)", re.IGNORECASE)
 
 
-def score(path: Path, lecture_id: str, lecture_root: Path) -> tuple[int, int, str]:
+def lecture_number(lecture_id: str) -> int:
+    match = LECTURE_ID_RE.fullmatch(lecture_id.strip())
+    if not match:
+        raise ValueError(f"Unsupported lecture ID format: {lecture_id!r}; expected lecture_XXX")
+    return int(match.group(1))
+
+
+def audio_number(path: Path) -> int | None:
+    match = SEERAH_NUMBER_RE.match(path.stem)
+    return int(match.group(1)) if match else None
+
+
+def matches_lecture(path: Path, lecture_id: str) -> bool:
+    return audio_number(path) == lecture_number(lecture_id)
+
+
+def score(path: Path, lecture_id: str, lecture_root: Path) -> tuple[int, int, int, str]:
     name = path.stem.lower()
     lecture = lecture_id.lower()
     inside_lecture_root = 0 if lecture_root in path.parents else 1
-    exact = 0 if name == lecture else 1
-    starts = 0 if name.startswith(lecture) else 1
-    contains = 0 if lecture in name else 1
-    return (inside_lecture_root * 100 + exact * 10 + starts * 3 + contains, len(str(path)), str(path))
+    literal = 0 if lecture in name else 1
+    compact_seerah = 0 if re.match(r"^seerah\d", name) else 1
+    return (inside_lecture_root, literal, compact_seerah, len(str(path)), str(path))
 
 
 def main() -> int:
@@ -35,6 +53,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
+    requested_number = lecture_number(args.lecture_id)
     roots = [args.lecture_root, args.drive_root]
     candidates: list[Path] = []
     seen: set[Path] = set()
@@ -47,7 +66,7 @@ def main() -> int:
                 continue
             if any(part in EXCLUDED_PARTS for part in path.parts):
                 continue
-            if args.lecture_id.lower() not in path.name.lower() and root != args.lecture_root:
+            if not matches_lecture(path, args.lecture_id):
                 continue
             resolved = path.resolve()
             if resolved not in seen:
@@ -56,7 +75,8 @@ def main() -> int:
 
     if not candidates:
         raise FileNotFoundError(
-            f"No source audio found for {args.lecture_id} under {args.lecture_root} or {args.drive_root}"
+            f"No Seerah source audio numbered {requested_number} found for {args.lecture_id} "
+            f"under {args.lecture_root} or {args.drive_root}"
         )
 
     candidates.sort(key=lambda path: score(path, args.lecture_id, args.lecture_root.resolve()))
@@ -66,7 +86,9 @@ def main() -> int:
 
     print(json.dumps({
         "lecture_id": args.lecture_id,
+        "lecture_number": requested_number,
         "selected_audio": str(selected),
+        "selected_audio_number": audio_number(selected),
         "candidate_count": len(candidates),
         "candidates": [str(path) for path in candidates[:20]],
     }, indent=2))
