@@ -19,7 +19,13 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def render(value: str, context: dict[str, str]) -> str:
-    return value.format(**context)
+    rendered = value
+    for _ in range(10):
+        updated = rendered.format(**context)
+        if updated == rendered:
+            return updated
+        rendered = updated
+    raise ValueError(f"Template did not stabilize after 10 passes: {value!r} -> {rendered!r}")
 
 
 def utc_now() -> str:
@@ -35,8 +41,6 @@ def auto_workers(stage_config: dict[str, Any], lecture_count: int) -> int:
     resource = str(stage_config.get("resource", "cpu")).lower()
 
     if resource == "gpu":
-        # One process per visible GPU by default. A stage can explicitly
-        # override max_workers when the underlying runner safely shares a GPU.
         visible = os.environ.get("CUDA_VISIBLE_DEVICES", "").strip()
         if visible and visible != "-1":
             gpu_count = len([value for value in visible.split(",") if value.strip()])
@@ -89,6 +93,7 @@ def run_one(
 ) -> dict[str, Any]:
     started_at = utc_now()
     context = {**common, "lecture_id": lecture_id, "stage": stage}
+    context = {key: render(value, {**context, "lecture_id": lecture_id, "stage": stage}) for key, value in context.items()}
     expected = [Path(render(path, context)) for path in stage_config["expected_outputs"]]
 
     if resume and all(path.exists() for path in expected):
