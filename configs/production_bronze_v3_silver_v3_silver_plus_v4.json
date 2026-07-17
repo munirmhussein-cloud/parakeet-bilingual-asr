@@ -1,5 +1,5 @@
 {
-  "schema_version": "production_bronze_v3_silver_v3_silver_plus_v4_config_v1",
+  "schema_version": "production_bronze_v3_silver_v3_silver_plus_v4_config_v2",
   "common": {
     "repo_root": "/content/parakeet-bilingual-asr",
     "drive_root": "/content/drive/MyDrive/parakeet-bilingual-asr",
@@ -14,9 +14,10 @@
       "command": [
         "/bin/bash",
         "-lc",
-        "set -euo pipefail; AUDIO=$(find '{lecture_root}' -type f \\( -iname '*.wav' -o -iname '*.mp3' -o -iname '*.m4a' -o -iname '*.flac' \\) ! -path '*/audio_views/*' | sort | head -n 1); test -n \"$AUDIO\"; python scripts/run_bronze_v3_production_lecture.py --repo-root '{repo_root}' --lecture-id '{lecture_id}' --audio \"$AUDIO\" --output-root '{lecture_root}/bronze_v3'"
+        "set -euo pipefail; mkdir -p '{lecture_root}/pipeline_state'; python scripts/resolve_lecture_audio.py --lecture-id '{lecture_id}' --lecture-root '{lecture_root}' --drive-root '{drive_root}' --output '{lecture_root}/pipeline_state/source_audio.txt'; AUDIO=$(cat '{lecture_root}/pipeline_state/source_audio.txt'); python scripts/run_bronze_v3_production_lecture.py --repo-root '{repo_root}' --lecture-id '{lecture_id}' --audio \"$AUDIO\" --output-root '{lecture_root}/bronze_v3'"
       ],
       "expected_outputs": [
+        "{lecture_root}/pipeline_state/source_audio.txt",
         "{lecture_root}/bronze_v3/{lecture_id}_bronze_v3_azure_whole.json",
         "{lecture_root}/bronze_v3/{lecture_id}_bronze_v3_azure_parent.jsonl"
       ]
@@ -28,7 +29,7 @@
       "command": [
         "/bin/bash",
         "-lc",
-        "set -euo pipefail; AUDIO=$(find '{lecture_root}' -type f \\( -iname '*.wav' -o -iname '*.mp3' -o -iname '*.m4a' -o -iname '*.flac' \\) ! -path '*/audio_views/*' | sort | head -n 1); test -n \"$AUDIO\"; python scripts/run_silver_v3_production_lecture.py --repo-root '{repo_root}' --lecture-id '{lecture_id}' --audio \"$AUDIO\" --silver-root '{lecture_root}/silver_v3' --view-workers 12"
+        "set -euo pipefail; AUDIO=$(cat '{lecture_root}/pipeline_state/source_audio.txt'); python scripts/run_silver_v3_production_lecture.py --repo-root '{repo_root}' --lecture-id '{lecture_id}' --audio \"$AUDIO\" --silver-root '{lecture_root}/silver_v3' --view-workers 12"
       ],
       "expected_outputs": [
         "{lecture_root}/silver_v3/reconciled_fixed/{lecture_id}_silver_v3_fixed_segment_level.jsonl",
