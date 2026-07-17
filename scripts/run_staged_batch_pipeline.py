@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import traceback
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
@@ -12,6 +13,8 @@ from typing import Any
 
 STAGES = ("bronze_v3", "silver_v3", "silver_plus_v4")
 SCHEMA_VERSION = "staged_bronze_v3_silver_v3_silver_plus_v4_batch_v2"
+LECTURE_ID_RE = re.compile(r"^lecture_(\d+)$", re.IGNORECASE)
+SEERAH_NUMBER_RE = re.compile(r"^seerah\D*0*(\d{1,3})(?!\d)", re.IGNORECASE)
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -30,6 +33,16 @@ def render(value: str, context: dict[str, str]) -> str:
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def audio_matches_lecture(path: Path, lecture_id: str) -> bool:
+    lecture_match = LECTURE_ID_RE.fullmatch(lecture_id.strip())
+    audio_match = SEERAH_NUMBER_RE.match(path.stem)
+    return bool(
+        lecture_match
+        and audio_match
+        and int(lecture_match.group(1)) == int(audio_match.group(1))
+    )
 
 
 def auto_workers(stage_config: dict[str, Any], lecture_count: int) -> int:
@@ -100,8 +113,10 @@ def validate_output(path: Path, lecture_id: str) -> None:
         selected = Path(path.read_text(encoding="utf-8").strip())
         if not selected.is_file():
             raise ValueError(f"Recorded source audio does not exist: {selected}")
-        if lecture_id.lower() not in selected.name.lower():
-            raise ValueError(f"Recorded source audio does not identify {lecture_id}: {selected}")
+        if not audio_matches_lecture(selected, lecture_id):
+            raise ValueError(
+                f"Recorded source audio number does not match {lecture_id}: {selected}"
+            )
         return
     else:
         return
