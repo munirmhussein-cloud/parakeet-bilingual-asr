@@ -1,5 +1,5 @@
 {
-  "schema_version": "production_bronze_v3_silver_v3_silver_plus_v4_config_v2",
+  "schema_version": "production_bronze_v3_silver_v3_silver_plus_v4_config_v3",
   "common": {
     "repo_root": "/content/parakeet-bilingual-asr",
     "drive_root": "/content/drive/MyDrive/parakeet-bilingual-asr",
@@ -33,7 +33,7 @@
       ],
       "expected_outputs": [
         "{lecture_root}/silver_v3/reconciled_fixed/{lecture_id}_silver_v3_fixed_segment_level.jsonl",
-        "{lecture_root}/silver_v3/reconciled_fixed/{lecture_id}_silver_v3_fixed_quality_report.json"
+        "{lecture_root}/silver_v3/reconciled_fixed/{lecture_id}_silver_v3_fixed_production_run_report.json"
       ]
     },
     "silver_plus_v4": {
@@ -42,17 +42,13 @@
       "cwd": "{repo_root}",
       "command": [
         "/usr/bin/python3",
-        "{repo_root}/scripts/run_silver_plus_v4_fifth_view_export_final.py",
+        "{repo_root}/scripts/run_silver_plus_v4_production_lecture.py",
         "--repo-root",
         "{repo_root}",
         "--silver-v3",
         "{lecture_root}/silver_v3/reconciled_fixed/{lecture_id}_silver_v3_fixed_segment_level.jsonl",
         "--azure-parent",
         "{lecture_root}/bronze_v3/{lecture_id}_bronze_v3_azure_parent.jsonl",
-        "--gold",
-        "{lecture_root}/silver_plus_v4/evaluation_reference/gold_v12_segments.jsonl",
-        "--gold-eval-reference",
-        "{lecture_root}/silver_plus_v4/evaluation_reference/gold_eval_reference.py",
         "--output-dir",
         "{lecture_root}/silver_plus_v4/fifth_view_integrated",
         "--output-prefix",
