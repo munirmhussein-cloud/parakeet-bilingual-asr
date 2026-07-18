@@ -1,0 +1,27 @@
+{
+  "profile": "copper_v1b",
+  "description": "Baseline plus per-segment multilingual detection and broader initial language sampling.",
+  "model": "turbo",
+  "compute_type": "float16",
+  "num_workers": 1,
+  "transcribe": {
+    "task": "transcribe",
+    "language": null,
+    "log_progress": true,
+    "beam_size": 5,
+    "best_of": 5,
+    "patience": 1.0,
+    "temperature": 0.0,
+    "compression_ratio_threshold": 2.4,
+    "log_prob_threshold": -1.0,
+    "no_speech_threshold": 0.6,
+    "condition_on_previous_text": true,
+    "initial_prompt": null,
+    "hotwords": null,
+    "word_timestamps": true,
+    "multilingual": true,
+    "vad_filter": false,
+    "language_detection_threshold": 0.5,
+    "language_detection_segments": 3
+  }
+}
