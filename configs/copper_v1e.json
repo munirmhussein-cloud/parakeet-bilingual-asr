@@ -1,0 +1,28 @@
+{
+  "profile": "copper_v1e",
+  "description": "Quality-oriented Arabic profile combining multilingual detection, restrained prompting, hotwords, wider beam search, patience, and temperature fallback.",
+  "model": "turbo",
+  "compute_type": "float16",
+  "num_workers": 1,
+  "transcribe": {
+    "task": "transcribe",
+    "language": null,
+    "log_progress": true,
+    "beam_size": 8,
+    "best_of": 8,
+    "patience": 1.2,
+    "temperature": [0.0, 0.2, 0.4],
+    "compression_ratio_threshold": 2.4,
+    "log_prob_threshold": -1.0,
+    "no_speech_threshold": 0.6,
+    "condition_on_previous_text": true,
+    "prompt_reset_on_temperature": 0.5,
+    "initial_prompt": "English and Arabic Islamic lecture. Preserve Arabic speech in Arabic script and preserve audible Arabic vowel marks only when acoustically supported. Common expressions include: الله، محمد، رسول الله، القرآن، الحديث، السنة، صلى الله عليه وسلم، رضي الله عنه، إن شاء الله، الحمد لله، سبحان الله، عز وجل، السيرة، الشمائل، الخصائص.",
+    "hotwords": "الله محمد رسول الله القرآن الحديث السنة السيرة الشمائل الخصائص صلى الله عليه وسلم رضي الله عنه إن شاء الله الحمد لله سبحان الله عز وجل آدم نوح إبراهيم موسى عيسى أحمد الماحي الحاشر العاقب المقام المحمود الوسيلة الفضيلة الكوثر الجنة القيامة الأمة الصحابة صحيح البخاري صحيح مسلم",
+    "word_timestamps": true,
+    "multilingual": true,
+    "vad_filter": false,
+    "language_detection_threshold": 0.5,
+    "language_detection_segments": 3
+  }
+}
