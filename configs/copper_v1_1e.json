@@ -1,0 +1,28 @@
+{
+  "profile": "copper_v1.1e",
+  "description": "Copper v1e with a neutral collection-wide bilingual prompt and no hotwords; all other quality-oriented decoding parameters unchanged.",
+  "model": "turbo",
+  "compute_type": "float16",
+  "num_workers": 1,
+  "transcribe": {
+    "task": "transcribe",
+    "language": null,
+    "log_progress": true,
+    "beam_size": 8,
+    "best_of": 8,
+    "patience": 1.2,
+    "temperature": [0.0, 0.2, 0.4],
+    "compression_ratio_threshold": 2.4,
+    "log_prob_threshold": -1.0,
+    "no_speech_threshold": 0.6,
+    "condition_on_previous_text": true,
+    "prompt_reset_on_temperature": 0.5,
+    "initial_prompt": "This is an English and Arabic Islamic lecture. Transcribe English speech in English and Arabic speech in Arabic script. Preserve Arabic vocalization only when clearly supported by the audio. Do not translate, expand, or insert expected religious phrases.",
+    "hotwords": null,
+    "word_timestamps": true,
+    "multilingual": true,
+    "vad_filter": false,
+    "language_detection_threshold": 0.5,
+    "language_detection_segments": 3
+  }
+}
