@@ -112,6 +112,7 @@ def evaluate_case(
     if raw_gap > 2:
         reasons.append(f"raw_gap_too_large:{raw_gap}")
 
+    lexical_pair_count = 0
     for first_position, second_position in zip(
         first_positions,
         second_positions,
@@ -122,33 +123,45 @@ def evaluate_case(
         second_center = safe_float(second.get("center"))
         first_views = token_view_set(first)
         second_views = token_view_set(second)
+        evidence_pair = bool(
+            str(first.get("normalized") or "").strip()
+            or str(second.get("normalized") or "").strip()
+        )
+        if evidence_pair:
+            lexical_pair_count += 1
 
         if first_center is None or second_center is None:
             center_delta = None
-            reasons.append(
-                f"missing_center:{first_position}:{second_position}"
-            )
+            if evidence_pair:
+                reasons.append(
+                    f"missing_center:{first_position}:{second_position}"
+                )
         else:
             center_delta = abs(first_center - second_center)
-            if center_delta > maximum_pair_center_delta:
+            if (
+                evidence_pair
+                and center_delta > maximum_pair_center_delta
+            ):
                 reasons.append(
                     "pair_center_delta_exceeds_limit:"
                     f"{first_position}:{second_position}:{center_delta:.6f}"
                 )
 
-        if not first_views or not second_views:
-            reasons.append(
-                f"missing_views:{first_position}:{second_position}"
-            )
-        elif first_views != second_views:
-            reasons.append(
-                f"pair_view_mismatch:{first_position}:{second_position}"
-            )
+        if evidence_pair:
+            if not first_views or not second_views:
+                reasons.append(
+                    f"missing_views:{first_position}:{second_position}"
+                )
+            elif first_views != second_views:
+                reasons.append(
+                    f"pair_view_mismatch:{first_position}:{second_position}"
+                )
 
         pair_details.append({
             "first_position": first_position,
             "second_position": second_position,
             "token": validator_normalized_token(first),
+            "evidence_pair": evidence_pair,
             "first_center": first_center,
             "second_center": second_center,
             "center_delta": center_delta,
@@ -156,10 +169,16 @@ def evaluate_case(
             "second_views": list(second_views),
         })
 
+    if lexical_pair_count == 0:
+        reasons.append("no_lexical_evidence_pairs")
+
     deltas = [
         detail["center_delta"]
         for detail in pair_details
-        if detail["center_delta"] is not None
+        if (
+            detail["evidence_pair"]
+            and detail["center_delta"] is not None
+        )
     ]
     return {
         **case,
