@@ -7,39 +7,54 @@ from pipeline.silver_v3.repair_immediate_duplicates import (
     immediate_duplicate_cases,
     refresh_row,
     repair_rows,
+    scan_rows,
 )
 
 
 PUNCTUATION = {".", ",", "!", "?", ":", ";"}
-VIEW = "context_10s_stride_5s"
 
 
-def token(text: str, center: float, index: int) -> dict:
+def token(
+    text: str,
+    center: float,
+    views: list[str],
+    index: int,
+) -> dict:
     normalized = "" if text in PUNCTUATION else text.casefold()
-    observation = {
-        "observation_id": f"{VIEW}|source_{index}|{index}",
-        "view": VIEW,
-        "source_id": f"source_{index}",
-        "source_token_index": index,
-        "surface": text,
-        "normalized": normalized,
-        "center": center,
-        "start": center,
-        "end": center,
-        "timing_method": "raw_global_timestamp",
-    }
+    observations = [
+        {
+            "observation_id": f"{view}|source_{index}_{offset}|{index}",
+            "view": view,
+            "source_id": f"source_{index}_{offset}",
+            "source_token_index": index,
+            "surface": text,
+            "normalized": normalized,
+            "center": center,
+            "start": center,
+            "end": center,
+            "timing_method": "raw_global_timestamp",
+        }
+        for offset, view in enumerate(views)
+    ]
     return {
         "slot_id": index,
         "center": center,
         "text": text,
         "normalized": normalized,
-        "acceptance_tier": "C_single_witness",
-        "single_witness": True,
-        "witness_view_count": 1,
-        "views": [VIEW],
-        "observation_count": 1,
-        "observation_ids": [observation["observation_id"]],
-        "observations": [observation],
+        "acceptance_tier": (
+            "A_corroborated"
+            if len(views) >= 2
+            else "C_single_witness"
+        ),
+        "single_witness": len(views) < 2,
+        "witness_view_count": len(views),
+        "views": views,
+        "observation_count": len(observations),
+        "observation_ids": [
+            item["observation_id"]
+            for item in observations
+        ],
+        "observations": observations,
         "alternates": [],
     }
 
@@ -47,24 +62,34 @@ def token(text: str, center: float, index: int) -> dict:
 def row(
     segment_position: int,
     phrase: list[str],
-    *,
-    overlaid: bool,
+    first_centers: list[float],
+    second_centers: list[float],
+    first_views: list[list[str]],
+    second_views: list[list[str]],
     observation_base: int,
 ) -> dict:
-    first = []
-    second = []
-    for offset, surface in enumerate(phrase):
-        center = 10.0 + offset * 0.4
-        first.append(
-            token(surface, center, observation_base + offset)
+    first = [
+        token(
+            surface,
+            center,
+            views,
+            observation_base + offset,
         )
-        second.append(
-            token(
-                surface,
-                center if overlaid else center + 4.0,
-                observation_base + 100 + offset,
-            )
+        for offset, (surface, center, views) in enumerate(
+            zip(phrase, first_centers, first_views)
         )
+    ]
+    second = [
+        token(
+            surface,
+            center,
+            views,
+            observation_base + 100 + offset,
+        )
+        for offset, (surface, center, views) in enumerate(
+            zip(phrase, second_centers, second_views)
+        )
+    ]
     output = {
         "schema_version": "silver_v3_segment_level_v4",
         "lecture_id": "lecture_002",
@@ -91,98 +116,156 @@ def row(
     return output
 
 
-def test_validator_semantics_include_punctuation() -> None:
-    tokens = row(
-        46,
-        ["the", "chest", "to", "the", "navel", "."],
-        overlaid=True,
-        observation_base=0,
-    )["tokens"]
+def lecture_002_rows() -> list[dict]:
+    canonical = "canonical_20s"
+    context = "context_10s_stride_5s"
+    local = "local_2p5s_contiguous"
+    whole = "whole_slice"
 
-    cases = immediate_duplicate_cases(tokens)
-
-    assert len(cases) == 1
-    assert cases[0]["ngram"] == "the chest to the navel ."
-    assert cases[0]["first_positions"] == [0, 1, 2, 3, 4, 5]
-    assert cases[0]["second_positions"] == [6, 7, 8, 9, 10, 11]
-
-
-def test_single_allowed_duplicate_is_not_rewritten() -> None:
-    rows = [
-        row(
-            62,
-            ["they", "were", "people", "of", "quality", "."],
-            overlaid=True,
-            observation_base=0,
-        )
-    ]
-    original = deepcopy(rows)
-
-    repair = repair_rows(rows, maximum_remaining=1)
-
-    assert repair["before_count"] == 1
-    assert repair["after_count"] == 1
-    assert repair["collapse_count"] == 0
-    assert rows == original
-
-
-def test_repairs_two_overlaid_cases_and_retains_one_allowed_case() -> None:
-    rows = [
+    return [
         row(
             46,
             ["the", "chest", "to", "the", "navel", "."],
-            overlaid=True,
-            observation_base=0,
+            [936.06, 936.26, 936.50, 936.62, 936.90, 937.04],
+            [937.53, 937.75, 938.00, 938.04, 938.27, 938.41],
+            [
+                [context, local, whole],
+                [context, local, whole],
+                [context, local, whole],
+                [context, local, whole],
+                [context, local, whole],
+                [context, local],
+            ],
+            [
+                [canonical, context, local, whole],
+                [canonical, context, local, whole],
+                [canonical, context, local, whole],
+                [canonical, context, local, whole],
+                [canonical, context, local, whole],
+                [canonical, context, local, whole],
+            ],
+            0,
         ),
         row(
             154,
             ["by", "the", "name", "of", "zahir", ","],
-            overlaid=True,
-            observation_base=1000,
+            [3080.72, 3080.96, 3081.04, 3081.16, 3082.00, 3082.245],
+            [3082.72, 3082.80, 3082.96, 3083.09, 3083.52, 3083.76],
+            [[canonical, context, whole]] * 6,
+            [
+                [canonical, context, whole],
+                [canonical, context, local, whole],
+                [canonical, context, whole],
+                [canonical, context, local, whole],
+                [canonical, context, local, whole],
+                [canonical, context, local, whole],
+            ],
+            1000,
         ),
         row(
             183,
             [".", "it", "was", "too", "late", "."],
-            overlaid=False,
-            observation_base=2000,
+            [3672.72, 3673.04, 3673.265, 3673.42, 3673.64, 3673.68],
+            [3673.76, 3674.14, 3674.30, 3674.48, 3674.70, 3674.75],
+            [
+                [canonical, context],
+                [canonical, context],
+                [canonical, context, local],
+                [canonical, context],
+                [canonical, context, local, whole],
+                [canonical, context],
+            ],
+            [
+                [whole],
+                [canonical, context, whole],
+                [canonical, context, whole],
+                [canonical, context, whole],
+                [canonical, context, whole],
+                [canonical, context, local, whole],
+            ],
+            2000,
         ),
     ]
+
+
+def test_validator_semantics_include_punctuation() -> None:
+    cases = immediate_duplicate_cases(
+        lecture_002_rows()[0]["tokens"]
+    )
+    assert len(cases) == 1
+    assert cases[0]["ngram"] == "the chest to the navel ."
+
+
+def test_single_allowed_duplicate_is_not_rewritten() -> None:
+    rows = lecture_002_rows()[:1]
+    original = deepcopy(rows)
+    result = repair_rows(rows, maximum_remaining=1)
+    assert result["before_count"] == 1
+    assert result["after_count"] == 1
+    assert result["collapse_count"] == 0
+    assert rows == original
+
+
+def test_real_lecture_002_cases_are_rigid_translation_candidates() -> None:
+    cases = scan_rows(lecture_002_rows())
+    assert len(cases) == 3
+    assert all(case["eligible"] is True for case in cases)
+
+    by_position = {
+        case["segment_position"]: case
+        for case in cases
+    }
+    assert by_position[46]["pair_center_delta_spread"] < 0.14
+    assert by_position[154]["pair_center_delta_spread"] < 0.49
+    assert by_position[183]["pair_center_delta_spread"] < 0.07
+    assert by_position[183]["minimum_pair_view_jaccard"] == 0.5
+
+
+def test_real_lecture_002_reduces_three_to_one() -> None:
+    rows = lecture_002_rows()
     evidence_before = collect_evidence_ids(rows)
 
-    repair = repair_rows(rows, maximum_remaining=1)
+    result = repair_rows(rows, maximum_remaining=1)
 
-    assert repair["before_count"] == 3
-    assert repair["collapse_count"] == 2
-    assert repair["after_count"] == 1
-    assert repair["within_quality_limit"] is True
-    assert repair["evidence_accounting_preserved"] is True
+    assert result["before_count"] == 3
+    assert result["collapse_count"] == 2
+    assert result["after_count"] == 1
+    assert result["within_quality_limit"] is True
+    assert result["evidence_accounting_preserved"] is True
     assert collect_evidence_ids(rows) == evidence_before
-    assert [item["token_count"] for item in rows] == [6, 6, 12]
-    assert [item["immediate_duplicate_6gram_count"] for item in rows] == [0, 0, 1]
-    assert repair["remaining_cases"][0]["segment_position"] == 183
-    assert repair["remaining_cases"][0]["eligible"] is False
+
+    # The two most rigid phrase loops are repaired; the least rigid
+    # remaining case is permitted by the unchanged maximum of one.
+    assert [
+        item["segment_position"]
+        for item in result["collapses"]
+    ] == [183, 46]
+    assert result["remaining_cases"][0]["segment_position"] == 154
+    assert [item["token_count"] for item in rows] == [6, 12, 6]
 
 
-def test_pair_view_mismatch_is_not_collapsed() -> None:
-    rows = [
-        row(
-            46,
-            ["the", "chest", "to", "the", "navel", "."],
-            overlaid=True,
-            observation_base=0,
-        ),
-        row(
-            154,
-            ["by", "the", "name", "of", "zahir", ","],
-            overlaid=False,
-            observation_base=1000,
-        ),
-    ]
-    rows[0]["tokens"][6]["views"] = ["canonical_20s"]
+def test_nonrigid_or_disjoint_evidence_is_not_repaired() -> None:
+    rows = lecture_002_rows()[:1]
 
-    repair = repair_rows(rows, maximum_remaining=1)
+    for offset, position in enumerate(range(6, 12)):
+        rows[0]["tokens"][position]["center"] += offset * 0.30
 
-    assert repair["before_count"] == 2
-    assert repair["collapse_count"] == 0
-    assert repair["after_count"] == 2
-    assert repair["within_quality_limit"] is False
+    case = scan_rows(rows)[0]
+    assert case["eligible"] is False
+    assert any(
+        "delta_spread_exceeds_limit" in reason
+        for reason in case["ineligible_reasons"]
+    )
+
+    rows = lecture_002_rows()[:1]
+    for position in range(6, 11):
+        rows[0]["tokens"][position]["views"] = [
+            "azure_pyannote_forced_ar"
+        ]
+
+    case = scan_rows(rows)[0]
+    assert case["eligible"] is False
+    assert any(
+        "view_overlap_below_limit" in reason
+        for reason in case["ineligible_reasons"]
+    )
