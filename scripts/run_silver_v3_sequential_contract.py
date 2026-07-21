@@ -49,7 +49,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Run Silver v3 strictly one lecture at a time and accept completion only after "
-            "the immutable Lecture 001 repaired export contract passes."
+            "the immutable Lecture 001 repair, quality, and export-package contract passes."
         )
     )
     parser.add_argument("--repo-root", type=Path, default=Path("/content/parakeet-bilingual-asr"))
@@ -72,8 +72,9 @@ def main() -> int:
     repo_root = args.repo_root.resolve()
     drive_root = args.drive_root.resolve()
     batch_runner = repo_root / "scripts/run_silver_v3_batch.py"
-    finalizer = repo_root / "scripts/finalize_silver_v3_contract.py"
-    for required in (batch_runner, finalizer):
+    repair_finalizer = repo_root / "pipeline/silver_v3/finalize_fixed.py"
+    contract_finalizer = repo_root / "scripts/finalize_silver_v3_contract.py"
+    for required in (batch_runner, repair_finalizer, contract_finalizer):
         if not required.is_file():
             raise FileNotFoundError(required)
 
@@ -85,8 +86,10 @@ def main() -> int:
     )
     lecture_ids = [f"lecture_{number:03d}" for number in range(args.start, args.end + 1)]
     state: dict[str, Any] = {
-        "schema_version": "silver_v3_sequential_contract_summary_v1",
+        "schema_version": "silver_v3_sequential_contract_summary_v2",
         "contract_reference": "lecture_001_silver_v3_repaired_export_package_v1",
+        "repair_stage": str(repair_finalizer),
+        "contract_stage": str(contract_finalizer),
         "started_at": utc_now(),
         "updated_at": utc_now(),
         "finished_at": None,
@@ -99,6 +102,8 @@ def main() -> int:
     print("=" * 96)
     print("Lectures:", f"{lecture_ids[0]}–{lecture_ids[-1]}")
     print("View workers:", args.view_workers)
+    print("Repair stage:", repair_finalizer)
+    print("Contract stage:", contract_finalizer)
     print("State:", state_path)
 
     if args.plan_only:
@@ -115,6 +120,7 @@ def main() -> int:
             result: dict[str, Any] = {
                 "status": "running",
                 "started_at": utc_now(),
+                "stages": {},
             }
             state["results"][lecture_id] = result
             state["updated_at"] = utc_now()
@@ -133,6 +139,9 @@ def main() -> int:
                 batch_command.append("--overwrite")
 
             batch_code = stream(batch_command, repo_root, lecture_id)
+            result["stages"]["hosted_and_base_construction"] = {"return_code": batch_code}
+            state["updated_at"] = utc_now()
+            atomic_write_json(state_path, state)
             if batch_code != 0:
                 raise RuntimeError(f"Underlying Silver v3 batch runner failed with {batch_code}")
 
@@ -143,16 +152,39 @@ def main() -> int:
                 / lecture_id
                 / "silver_v3"
             )
+
+            repair_command = [
+                sys.executable,
+                "-u",
+                str(repair_finalizer),
+                "--repo-root", str(repo_root),
+                "--silver-root", str(silver_root),
+                "--lecture-id", lecture_id,
+            ]
+            repair_code = stream(repair_command, repo_root, lecture_id)
+            result["stages"]["lecture_001_repair_finalization"] = {"return_code": repair_code}
+            state["updated_at"] = utc_now()
+            atomic_write_json(state_path, state)
+            if repair_code != 0:
+                marker = silver_root / ".silver_v3_complete.json"
+                marker.unlink(missing_ok=True)
+                raise RuntimeError(
+                    f"Lecture {lecture_id} failed the Lecture 001 repair/finalization stage"
+                )
+
             finalize_command = [
                 sys.executable,
                 "-u",
-                str(finalizer),
+                str(contract_finalizer),
                 "--repo-root", str(repo_root),
                 "--silver-root", str(silver_root),
                 "--lecture-id", lecture_id,
                 "--copy-to", str(silver_root / "final_package"),
             ]
             finalize_code = stream(finalize_command, repo_root, lecture_id)
+            result["stages"]["quality_and_export_contract"] = {"return_code": finalize_code}
+            state["updated_at"] = utc_now()
+            atomic_write_json(state_path, state)
             if finalize_code != 0:
                 marker = silver_root / ".silver_v3_complete.json"
                 marker.unlink(missing_ok=True)
@@ -161,12 +193,11 @@ def main() -> int:
                 )
 
             elapsed = round(time.monotonic() - started, 3)
-            result = {
+            result.update({
                 "status": "completed",
-                "started_at": result["started_at"],
                 "finished_at": utc_now(),
                 "wall_seconds": elapsed,
-            }
+            })
             state["results"][lecture_id] = result
             state["updated_at"] = utc_now()
             atomic_write_json(state_path, state)
@@ -181,11 +212,13 @@ def main() -> int:
         return 130
     except Exception as error:
         lecture_id = lecture_id if "lecture_id" in locals() else "unknown"
-        state["results"][lecture_id] = {
+        existing = state["results"].get(lecture_id, {})
+        existing.update({
             "status": "failed",
             "finished_at": utc_now(),
             "error": str(error),
-        }
+        })
+        state["results"][lecture_id] = existing
         state["updated_at"] = utc_now()
         state["finished_at"] = utc_now()
         atomic_write_json(state_path, state)
