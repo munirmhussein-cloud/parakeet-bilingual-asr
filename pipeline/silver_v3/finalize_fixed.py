@@ -294,12 +294,39 @@ def main() -> int:
             raise RuntimeError("Repaired export lecture identity mismatch")
         if reconciliation_payload.get("lecture_id") != args.lecture_id:
             raise RuntimeError("Reconciliation report lecture identity mismatch")
+        reconciliation_validation = reconciliation_payload.get("validation", {})
+        if not isinstance(reconciliation_validation, dict):
+            raise RuntimeError("Reconciliation validation section is missing")
+        fatal_reconciliation_failures = {
+            "segment_positions_ordered": reconciliation_validation.get(
+                "segment_positions_ordered"
+            )
+            is not True,
+            "segment_ids_unique": reconciliation_validation.get("segment_ids_unique")
+            is not True,
+            "chronology_error_count": int(
+                reconciliation_validation.get("chronology_error_count", -1)
+            )
+            != 0,
+            "zero_drop_invariant": reconciliation_validation.get("zero_drop_invariant")
+            is not True,
+            "unaccounted_observation_count": int(
+                reconciliation_validation.get("unaccounted_observation_count", -1)
+            )
+            != 0,
+        }
+        failed_reconciliation_invariants = sorted(
+            key for key, failed in fatal_reconciliation_failures.items() if failed
+        )
+        if failed_reconciliation_invariants:
+            raise RuntimeError(
+                "Reconciliation failed non-quality invariants: "
+                + ", ".join(failed_reconciliation_invariants)
+            )
         if reconcile_record["returncode"] != 0:
             reconciliation_nonzero_accepted = True
             reconcile_record["nonzero_return_accepted_for_authoritative_quality_validation"] = True
-            reconcile_record["diagnostic_validation"] = reconciliation_payload.get(
-                "validation", {}
-            )
+            reconcile_record["diagnostic_validation"] = reconciliation_validation
 
         quality_record = run_step(
             "3. Apply unchanged Silver v3 production quality gates",
