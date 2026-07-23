@@ -131,21 +131,62 @@ def choose_match(tokens: list[dict[str, Any]], obs: dict[str, Any], max_seconds:
     return min(candidates)[2] if candidates else None
 
 
+def exact_base_letters(text: str) -> str:
+    return "".join(
+        character
+        for character in strip_tashkeel(str(text))
+        if is_arabic(character)
+    )
+
+
+def vocalization_count(text: str) -> int:
+    return sum(
+        (
+            character in TASHKEEL
+            or unicodedata.category(character) == "Mn"
+        )
+        for character in unicodedata.normalize("NFD", str(text))
+    )
+
+
 def corroborate(token: dict[str, Any], obs: dict[str, Any]) -> None:
     views = list(dict.fromkeys([*token.get("views", []), AZURE_VIEW]))
     token["views"] = views
+
     observations = list(token.get("observations", []))
     observations.append(obs)
     token["observations"] = observations
+
     token["support_count"] = len(views)
+
     flags = list(dict.fromkeys(token.get("flags", [])))
+
     surface = token_text(token)
-    if is_arabic(obs["text"]) and not is_arabic(surface):
-        flags.append("script_disagreement")
-        token["text"] = obs["text"]
-        token["surface"] = obs["text"]
+    observation = obs["text"]
+
+    if is_arabic(observation):
+
+        if not is_arabic(surface):
+            flags.append("script_disagreement")
+            token["text"] = observation
+            token["surface"] = observation
+
+        elif (
+            exact_base_letters(surface)
+            == exact_base_letters(observation)
+            and vocalization_count(observation)
+            > vocalization_count(surface)
+        ):
+            token["text"] = observation
+            token["surface"] = observation
+            flags.append("vocalization_surface_upgrade")
+
     token["flags"] = list(dict.fromkeys(flags))
-    if token.get("acceptance_tier") == "C_single_witness" and len(views) >= 2:
+
+    if (
+        token.get("acceptance_tier") == "C_single_witness"
+        and len(views) >= 2
+    ):
         token["acceptance_tier"] = "A_corroborated"
 
 
